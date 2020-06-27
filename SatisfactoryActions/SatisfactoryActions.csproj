@@ -45,6 +45,7 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="BaseAction.cs" />
+        <Compile Include="DropBomb.cs" />
         <Compile Include="GiveItem.cs" />
         <Compile Include="HealPlayer.cs" />
         <Compile Include="InventoryBomb.cs" />

@@ -7,7 +7,7 @@ namespace SatisfactoryActions
 {
     public class HealPlayer: BaseAction<HealPlayer>
     {
-        [DefaultValue("999")]
+        [DefaultValue("100")]
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "amount")]
         private string _amount;
         

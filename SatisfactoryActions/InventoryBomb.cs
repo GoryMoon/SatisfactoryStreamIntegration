@@ -5,7 +5,7 @@ namespace SatisfactoryActions
 {
     public class InventoryBomb: BaseAction<InventoryBomb>
     {
-        [DefaultValue(200)]
+        [DefaultValue(2)]
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "spread")]
         private int _spread;
     }

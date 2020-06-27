@@ -18,13 +18,13 @@ namespace SatisfactoryActions
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "drop")]
         private bool _drop;
         
-        [DefaultValue(200)]
+        [DefaultValue(2)]
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "spread")]
         private int _spread;
         
         protected override GiveItem Process(GiveItem action, string username, string from, Dictionary<string, object> parameters)
         {
-            action._amount = StringToInt(_amount, 0, parameters).ToString();
+            action._amount = StringToInt(_amount, 1, parameters).ToString();
             return base.Process(action, username, from, parameters);
         }
     }

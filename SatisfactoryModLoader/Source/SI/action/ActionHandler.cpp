@@ -1,7 +1,5 @@
 #include "ActionHandler.h"
 
-
-
 #include "FGAISystem.h"
 #include "FGCharacterMovementComponent.h"
 #include "FGHealthComponent.h"
@@ -9,7 +7,7 @@
 #include "Utility.h"
 #include "player/PlayerUtility.h"
 
-void FActionHandler::HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject)
+void AActionHandler::HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject)
 {
 	const auto Method = Actions.Find(Type);
 	if (Method != nullptr)
@@ -24,7 +22,7 @@ void FActionHandler::HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObje
 }
 
 
-AFGPlayerController* FActionHandler::GetTarget(const TSharedPtr<FJsonObject> Json) const
+AFGPlayerController* AActionHandler::GetTarget(const TSharedPtr<FJsonObject> Json) const
 {
 	FString JsonTarget;
 	if (!Json->TryGetStringField("target", JsonTarget))
@@ -35,20 +33,20 @@ AFGPlayerController* FActionHandler::GetTarget(const TSharedPtr<FJsonObject> Jso
 	
 	if (JsonTarget == TEXT("random"))
 	{
-		auto Players = SML::GetConnectedPlayers(Subsystem->GetWorld());
+		auto Players = SML::GetConnectedPlayers(GetWorld());
 		return Players[FMath::RandRange(0, Players.Num() - 1)];
 	}
 	else if (JsonTarget == TEXT("self"))
 	{
-		return SML::GetPlayerByName(Subsystem->GetWorld(), StreamIntegration::GetConfig().Username);
+		return SML::GetPlayerByName(GetWorld(), StreamIntegration::GetConfig().Username);
 	}
 	else
 	{
-		return SML::GetPlayerByName(Subsystem->GetWorld(), JsonTarget);
+		return SML::GetPlayerByName(GetWorld(), JsonTarget);
 	}
 }
 
-void FActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObject) const
+void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
@@ -71,7 +69,7 @@ void FActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 	}
 }
 
-void FActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
+void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
@@ -95,7 +93,7 @@ void FActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 					if (Stack.Item.IsValid())
 					{
 						if (bDrop)
-							StreamIntegration::DropItem(Character, Stack, 0);
+							StreamIntegration::DropItem(Character, Stack, Spread);
 						else
 							StreamIntegration::GiveItem(Character, Stack, Spread);
 					}
@@ -113,7 +111,7 @@ void FActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 				if (Stack.Item.IsValid())
 				{
 					if (bDrop)
-						StreamIntegration::DropItem(Character, Stack, 0);
+						StreamIntegration::DropItem(Character, Stack, Spread);
 					else
 						StreamIntegration::GiveItem(Character, Stack, Spread);
 				}
@@ -130,7 +128,7 @@ void FActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 	}
 }
 
-void FActionHandler::HandleHealPlayer(TSharedPtr<FJsonObject> JsonObject) const
+void AActionHandler::HandleHealPlayer(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
@@ -150,19 +148,44 @@ void FActionHandler::HandleHealPlayer(TSharedPtr<FJsonObject> JsonObject) const
 	}
 }
 
-void FActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject) const
+void AActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject)
 {
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
 		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
 		const float Amount = JsonObject->GetNumberField("amount");
+		float AmountVertical = JsonObject->GetNumberField("amount_vertical");
+		const float NoFallDamage = JsonObject->GetNumberField("no_fall_damage");
+
+		if (AmountVertical == -1)
+		{
+			AmountVertical = Amount / 10;
+		}
 		
-		auto MoveVector = FMath::VRand() * Amount * 100;
-		MoveVector.Z = Amount * 10;
+		auto MoveVector = FMath::VRand() * (Amount * 100);
+		MoveVector.Z = AmountVertical * 100;
 		auto MovementComponent = Character->GetFGMovementComponent();
 		MovementComponent->SetGeneralVelocity(MoveVector + MovementComponent->GetVelocity());
 		Character->Jump();
+
+		const UCurveFloat* OldCurve = nullptr;
+		if (UProperty* Property = Character->GetClass()->FindPropertyByName(TEXT("mFallDamageCurveOverride")))
+		{
+			if (UObjectProperty* ObjProperty = Cast<UObjectProperty>(Property))
+			{
+				OldCurve = ObjProperty->ContainerPtrToValuePtr<UCurveFloat>(Character);
+				if (!IsValid(OldCurve) || (OldCurve->FloatCurve.Keys.Num() != 0 && !OldCurve->FloatCurve.Keys.IsValidIndex(0)))
+				{
+					SI_DEBUG("Old curve no valid, using null");
+					OldCurve = nullptr;
+				}
+			}
+		}
+		Character->SetFallDamageOverride(StreamIntegration::GetFallDamageOverride());
+		
+		MovePlayerDelegate.BindUFunction(this, FName("ResetFallDamage"), Character, OldCurve);
+		GetWorldTimerManager().SetTimer(MovePlayerTimerHandle, MovePlayerDelegate, NoFallDamage, false);
 	}
 	else
 	{
@@ -170,20 +193,51 @@ void FActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject) const
 	}
 }
 
-void FActionHandler::HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const
+void AActionHandler::ResetFallDamage(AFGCharacterPlayer* Player, UCurveFloat* Curve)
+{
+	SI_DEBUG("Setting override to: ", Curve);
+	Player->SetFallDamageOverride(Curve);
+	SI_DEBUG("Resetting falldamage override");
+}
+
+void AActionHandler::HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
 		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
-		const auto Amount = JsonObject->GetIntegerField("amount");
-		const auto ID = JsonObject->GetStringField("id");
-		const float Radius = JsonObject->GetNumberField("radius");
+		const int32 Amount = JsonObject->GetIntegerField("amount");
+		const FString ID = JsonObject->GetStringField("id");
+		const float Radius = JsonObject->GetNumberField("radius"); 
+		const bool Persistent = JsonObject->GetBoolField("persistent");
 
-		StreamIntegration::SpawnCreature(Character, ID, Amount, Radius);
+		StreamIntegration::SpawnCreature(Character, ID, Amount, Radius, Persistent);
 	}
 	else
 	{
 		SI_ERROR("Player was NULL, config is probably incorrect");
 	}
 }
+
+void AActionHandler::HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const
+{
+	const auto Player = GetTarget(JsonObject);
+	if (Player != nullptr)
+	{
+		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
+		const int32 Amount = JsonObject->GetIntegerField("amount");
+		const float Time = JsonObject->GetNumberField("time");
+		const float Height = JsonObject->GetNumberField("height");
+		const float Radius = JsonObject->GetNumberField("radius");
+		const float Damage = JsonObject->GetNumberField("damage");
+		const float DamageRadius = JsonObject->GetNumberField("damage_radius");
+
+		StreamIntegration::SpawnBomb(Character, Amount, Time, Height, Radius, Damage, DamageRadius);
+	}
+	else
+	{
+		SI_ERROR("Player was NULL, config is probably incorrect");
+	}
+}
+
+

@@ -1,39 +1,51 @@
 #pragma once
 
+#include "SIModule.h"
+#include "GameFramework/Info.h"
+
 #include "CoreMinimal.h"
+#include "util/Logging.h"
+#include "Utility.h"
 #include "Delegates/Delegate.h"
-#include "integration/IntegrationSubsystem.h"
+
+#include "ActionHandler.generated.h"
 
 DECLARE_DELEGATE_OneParam(FActionDelegate, TSharedPtr<FJsonObject>);
 
-class SI_API FActionHandler
+UCLASS()
+class SI_API AActionHandler: public AInfo
 {
-protected:
-	TMap<FString, const FActionDelegate> Actions;
-	TSharedPtr<class AIntegrationSubsystem> Subsystem;
+	GENERATED_BODY()
+	
+public:
+	AActionHandler()
+	{
 
+		Actions.Add(TEXT("inventory_bomb"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleInventoryBomb));
+		Actions.Add(TEXT("give_item"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleGiveItem));
+		Actions.Add(TEXT("heal_player"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleHealPlayer));
+		Actions.Add(TEXT("move_player"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleMovePlayer));
+		Actions.Add(TEXT("spawn_mob"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleSpawnMob));
+		Actions.Add(TEXT("drop_bomb"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleDropBomb));
+	}
+
+	void HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject);
+
+	UFUNCTION()
+	void ResetFallDamage(AFGCharacterPlayer* Player, UCurveFloat* Curve);
+	
+protected:	
+	TMap<FString, const FActionDelegate> Actions;
+	
 	class AFGPlayerController* GetTarget(TSharedPtr<FJsonObject> Json) const;
 
 	void HandleInventoryBomb(TSharedPtr<FJsonObject> JsonObject) const;
 	void HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const;
 	void HandleHealPlayer(TSharedPtr<FJsonObject> JsonObject) const;
-	void HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject) const;
+	void HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject);
 	void HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const;
-	
-public:
-	FActionHandler()
-	{
-		Actions.Add(TEXT("inventory_bomb"), FActionDelegate::CreateRaw(this, &FActionHandler::HandleInventoryBomb));
-		Actions.Add(TEXT("give_item"), FActionDelegate::CreateRaw(this, &FActionHandler::HandleGiveItem));
-		Actions.Add(TEXT("heal_player"), FActionDelegate::CreateRaw(this, &FActionHandler::HandleHealPlayer));
-		Actions.Add(TEXT("move_player"), FActionDelegate::CreateRaw(this, &FActionHandler::HandleMovePlayer));
-		Actions.Add(TEXT("spawn_mob"), FActionDelegate::CreateRaw(this, &FActionHandler::HandleSpawnMob));
-	}
+	void HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const;
 
-	void SetSubsystem(const TSharedPtr<AIntegrationSubsystem> System)
-	{
-		Subsystem = System;
-	}
-
-	void HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject);
+	FTimerHandle MovePlayerTimerHandle;
+	FTimerDelegate MovePlayerDelegate;
 };

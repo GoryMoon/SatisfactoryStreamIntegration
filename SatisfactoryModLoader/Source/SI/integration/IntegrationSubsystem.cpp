@@ -9,11 +9,11 @@ void AIntegrationSubsystem::BeginPlay()
 	Super::BeginPlay();
 	SI_INFO("Initializing integration subsystem");
 	bStopTask = false;
-	ActionHandler = new FActionHandler;
-	ActionHandler->SetSubsystem(MakeShareable(this));
+
+	const auto Actor = GetWorld()->SpawnActor<AActionHandler>(FVector::ZeroVector, FRotator::ZeroRotator);
+	ActionHandler = Cast<AActionHandler>(Actor);
 	
 	(new FAutoDeleteAsyncTask<FIntegrationTask>(this))->StartBackgroundTask();
-
 
 	GetWorldTimerManager().SetTimer(UpdateTimerHandle, this, &AIntegrationSubsystem::Update, 1.0f, true);
 }

@@ -49,6 +49,15 @@ namespace StreamIntegration
 	{
 		return Running;
 	}
+
+	UCurveFloat* GetFallDamageOverride()
+	{
+		if (NoFallDamage == nullptr)
+		{
+			NoFallDamage = Cast<UCurveFloat>(FStringAssetReference("/Game/SI/NoFallDamage.NoFallDamage").TryLoad());
+		}
+		return NoFallDamage;
+	}
 }
 
 IMPLEMENT_GAME_MODULE(FSIModule, SI);

@@ -1,5 +1,7 @@
 #include "Utility.h"
 
+
+#include "FGC4Explosive.h"
 #include "FGCreatureSpawner.h"
 #include "FGInventoryLibrary.h"
 #include "FGItemPickup_Spawnable.h"
@@ -80,7 +82,7 @@ void StreamIntegration::DropItem(AFGCharacterPlayer* Player, const FInventorySta
 {
 	FRotator OutRotation;
 	FVector OutPosition;
-	AFGItemPickup_Spawnable::FindGroundLocationInfrontOfActor(Player, 230 + FMath::RandRange(0, Spread), Stack, OutPosition, OutRotation);
+	AFGItemPickup_Spawnable::FindGroundLocationInfrontOfActor(Player, 230 + FMath::RandRange(0, Spread * 100), Stack, OutPosition, OutRotation);
 	AFGItemPickup_Spawnable::CreateItemDrop(Player->GetWorld(), Stack, OutPosition, OutRotation);
 	SI_DEBUG("Dropped item");
 }
@@ -94,12 +96,11 @@ void StreamIntegration::GiveItem(AFGCharacterPlayer* Player, const FInventorySta
 		SI_DEBUG("Gave item");
 }
 
-void StreamIntegration::SpawnCreature(AFGCharacterPlayer* Player, FString CreatureID, const int Amount, const float RadiusIn)
+void StreamIntegration::SpawnCreature(AFGCharacterPlayer* Player, FString CreatureID, const int Amount, const float Radius, bool Persistent)
 {
 	const auto Transform = Player->GetTransform();
 	auto World = Player->GetWorld();
 
-	const float Radius = (RadiusIn < 0 ? static_cast<float>(10) : RadiusIn) * 100;
 	UClass* CreatureClass;
 	if (GetCreature(CreatureID, &CreatureClass))
 	{
@@ -109,15 +110,31 @@ void StreamIntegration::SpawnCreature(AFGCharacterPlayer* Player, FString Creatu
 			{
 				const auto Location = Transform.GetLocation();
 				auto Vector = FMath::VRand();
-				(Vector.X *= Radius) += Location.X;
-				(Vector.Y *= Radius) += Location.Y;
+				(Vector.X *= Radius * 100) += Location.X;
+				(Vector.Y *= Radius * 100) += Location.Y;
 				Vector.Z = Location.Z;
 
 				SI_DEBUG("Trying to spawn creature at ", *Vector.ToString());
 				FActorSpawnParameters Parmas;
 				Parmas.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
 
-				World->SpawnActor(CreatureClass, &Vector, 0, Parmas);
+				const auto Actor = World->SpawnActor(CreatureClass, &Vector, 0, Parmas);
+				if (!CreatureID.Equals(TEXT("Manta")) && Persistent)
+				{
+					SetBoolProperty(Actor, TEXT("mNeedsSpawner"), false);
+					Cast<AFGCreature>(Actor)->SetPersistent(true);
+					
+					if (UProperty* Property = Actor->GetClass()->FindPropertyByName(TEXT("mKillOrphanHandle")))
+					{
+						if (UStructProperty* StructProperty = Cast<UStructProperty>(Property))
+						{
+							const auto Handle = StructProperty->ContainerPtrToValuePtr<FTimerHandle>(Actor);
+							Actor->GetWorldTimerManager().ClearTimer(*Handle);
+						}
+					}
+					
+					SI_DEBUG("Set creature to persistent");
+				}
 			}
 		} catch (int e)
 		{
@@ -126,6 +143,92 @@ void StreamIntegration::SpawnCreature(AFGCharacterPlayer* Player, FString Creatu
 	} else
 	{
 		SI_ERROR("Could not find creature: ", *CreatureID);
+	}
+}
+
+void StreamIntegration::SpawnBomb(AFGCharacterPlayer* Player, const int Amount, const float Time, const float Height, const float Radius, const float Damage, const float DamageRadius)
+{
+	const auto Transform = Player->GetTransform();
+	auto World = Player->GetWorld();
+
+	if (UClass* CreatureClass = FindClass(TEXT("/Game/FactoryGame/Equipment/C4Dispenser/BP_C4Explosive.BP_C4Explosive_C")))
+	{
+		try
+		{
+			for (int i = 0; i < Amount; ++i)
+			{
+				const auto Location = Transform.GetLocation();
+				auto Vector = FMath::VRand();
+				(Vector.X *= Radius * 100) += Location.X;
+				(Vector.Y *= Radius * 100) += Location.Y;
+				Vector.Z = Location.Z + Height * 100;
+
+				SI_DEBUG("Trying to spawn bomb at ", *Vector.ToString());
+				FActorSpawnParameters Parmas;
+				Parmas.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+
+				const auto Actor = Cast<AFGC4Explosive>(World->SpawnActor(CreatureClass, &Vector, 0, Parmas));
+
+				SetFloatProperty(Actor, TEXT("mBaseDamage"), Damage);
+				SetFloatProperty(Actor, TEXT("mDamageRadius"), DamageRadius * 100);
+				
+				FTimerDelegate DetonateTimer;
+				DetonateTimer.BindLambda([](AFGC4Explosive* Actor)
+				{
+					Actor->PlayExplosionEffects();
+					Actor->Detonate();
+				}, Actor);
+
+				FTimerHandle DetonateHandle;
+				Actor->GetWorldTimerManager().SetTimer(DetonateHandle, DetonateTimer, Time, false);
+			}
+		}
+		catch (int e)
+		{
+			SI_ERROR("SpawnCreature ERROR: ", e);
+		}
+	}
+	else
+	{
+		SI_ERROR("Could not find bomb class");
+	}
+}
+
+void StreamIntegration::SetBoolProperty(UObject* Obj, const FName Prop, const bool bValue)
+{
+	SI_DEBUG("Set prop: ", *Prop.ToString(), " to ", (bValue ? "True" : "False"));
+	
+	if (UClass* Class = Obj->GetClass())
+	{
+		if (UProperty* Property = Class->FindPropertyByName(Prop))
+		{
+			if (UBoolProperty* BoolProperty = Cast<UBoolProperty>(Property))
+			{
+				const auto BoolPtr = Property->ContainerPtrToValuePtr<bool>(Obj);
+				SI_DEBUG("Previous value of: ", *Prop.ToString(), " was ", BoolProperty->GetPropertyValue(BoolPtr));
+				BoolProperty->SetPropertyValue(BoolPtr, bValue);
+				SI_DEBUG("New value of: ", *Prop.ToString(), " is ", BoolProperty->GetPropertyValue(BoolPtr));
+			}
+		}
+	}
+}
+
+void StreamIntegration::SetFloatProperty(UObject* Obj, const FName Prop, const float Value)
+{
+	SI_DEBUG("Set prop: ", *Prop.ToString(), " to ", Value);
+
+	if (UClass* Class = Obj->GetClass())
+	{
+		if (UProperty* Property = Class->FindPropertyByName(Prop))
+		{
+			if (UFloatProperty* FloatProperty = Cast<UFloatProperty>(Property))
+			{
+				const auto FloatPtr = Property->ContainerPtrToValuePtr<float>(Obj);
+				SI_DEBUG("Previous value of: ", *Prop.ToString(), " was ", FloatProperty->GetPropertyValue(FloatPtr));
+				FloatProperty->SetPropertyValue(FloatPtr, Value);
+				SI_DEBUG("New value of: ", *Prop.ToString(), " is ", FloatProperty->GetPropertyValue(FloatPtr));
+			}
+		}
 	}
 }
 
@@ -248,31 +351,31 @@ const TMap<FString, FString> StreamIntegration::ItemMap = {
 	{ "Sulfur", "/Game/FactoryGame/Resource/RawResources/Sulfur/Desc_Sulfur.Desc_Sulfur_C" },
 	{ "Water", "/Game/FactoryGame/Resource/RawResources/Water/Desc_Water.Desc_Water_C" },
 	{ "Chainsaw", "/Game/FactoryGame/Equipment/Chainsaw/Desc_Chainsaw.Desc_Chainsaw_C" },
-	{ "EquipmentDescriptorHookShot", "/Game/FactoryGame/Equipment/Hookshot/BP_EquipmentDescriptorHookShot.BP_EquipmentDescriptorHookShot_C" },
-	{ "EquipmentDescriptorBuildGun", "/Game/FactoryGame/Resource/Equipment/BuildGun/BP_EquipmentDescriptorBuildGun.BP_EquipmentDescriptorBuildGun_C" },
+	{ "HookShot", "/Game/FactoryGame/Equipment/Hookshot/BP_EquipmentDescriptorHookShot.BP_EquipmentDescriptorHookShot_C" },
+	{ "BuildGun", "/Game/FactoryGame/Resource/Equipment/BuildGun/BP_EquipmentDescriptorBuildGun.BP_EquipmentDescriptorBuildGun_C" },
 	{ "NobeliskDetonator", "/Game/FactoryGame/Resource/Equipment/C4Dispenser/Desc_NobeliskDetonator.Desc_NobeliskDetonator_C" },
-	{ "EquipmentDescriptorColorGun", "/Game/FactoryGame/Resource/Equipment/ColorGun/BP_EquipmentDescriptorColorGun.BP_EquipmentDescriptorColorGun_C" },
-	{ "EquipmentDescriptorCup", "/Game/FactoryGame/Resource/Equipment/Cup/BP_EquipmentDescriptorCup.BP_EquipmentDescriptorCup_C" },
+	{ "ColorGun", "/Game/FactoryGame/Resource/Equipment/ColorGun/BP_EquipmentDescriptorColorGun.BP_EquipmentDescriptorColorGun_C" },
+	{ "Cup", "/Game/FactoryGame/Resource/Equipment/Cup/BP_EquipmentDescriptorCup.BP_EquipmentDescriptorCup_C" },
 	{ "DowsingStick", "/Game/FactoryGame/Resource/Equipment/DowsingStick/Desc_DowsingStick.Desc_DowsingStick_C" },
-	{ "EquipmentDescriptorGasmask", "/Game/FactoryGame/Resource/Equipment/GasMask/BP_EquipmentDescriptorGasmask.BP_EquipmentDescriptorGasmask_C" },
-	{ "EquipmentDescriptorObjectScanner", "/Game/FactoryGame/Resource/Equipment/GemstoneScanner/BP_EquipmentDescriptorObjectScanner.BP_EquipmentDescriptorObjectScanner_C" },
+	{ "Gasmask", "/Game/FactoryGame/Resource/Equipment/GasMask/BP_EquipmentDescriptorGasmask.BP_EquipmentDescriptorGasmask_C" },
+	{ "ObjectScanner", "/Game/FactoryGame/Resource/Equipment/GemstoneScanner/BP_EquipmentDescriptorObjectScanner.BP_EquipmentDescriptorObjectScanner_C" },
 	{ "GolfCart", "/Game/FactoryGame/Resource/Equipment/GolfCart/Desc_GolfCart.Desc_GolfCart_C" },
-	{ "EquipmentDescriptorHazardSuit", "/Game/FactoryGame/Resource/Equipment/HazardSuit/BP_EquipmentDescriptorHazardSuit.BP_EquipmentDescriptorHazardSuit_C" },
-	{ "EquipmentDescriptorHazmatSuit", "/Game/FactoryGame/Resource/Equipment/HazmatSuit/BP_EquipmentDescriptorHazmatSuit.BP_EquipmentDescriptorHazmatSuit_C" },
-	{ "EquipmentDescriptorJetPack", "/Game/FactoryGame/Resource/Equipment/JetPack/BP_EquipmentDescriptorJetPack.BP_EquipmentDescriptorJetPack_C" },
-	{ "EquipmentDescriptorJetPackMk2", "/Game/FactoryGame/Resource/Equipment/JetPack/BP_EquipmentDescriptorJetPackMk2.BP_EquipmentDescriptorJetPackMk2_C" },
-	{ "EquipmentDescriptorJumpingStilts", "/Game/FactoryGame/Resource/Equipment/JumpingStilts/BP_EquipmentDescriptorJumpingStilts.BP_EquipmentDescriptorJumpingStilts_C" },
-	{ "EquipmentDescriptorMachinegun", "/Game/FactoryGame/Resource/Equipment/Machinegun/BP_EquipmentDescriptorMachinegun.BP_EquipmentDescriptorMachinegun_C" },
+	{ "HazardSuit", "/Game/FactoryGame/Resource/Equipment/HazardSuit/BP_EquipmentDescriptorHazardSuit.BP_EquipmentDescriptorHazardSuit_C" },
+	{ "HazmatSuit", "/Game/FactoryGame/Resource/Equipment/HazmatSuit/BP_EquipmentDescriptorHazmatSuit.BP_EquipmentDescriptorHazmatSuit_C" },
+	{ "JetPack", "/Game/FactoryGame/Resource/Equipment/JetPack/BP_EquipmentDescriptorJetPack.BP_EquipmentDescriptorJetPack_C" },
+	{ "JetPackMk2", "/Game/FactoryGame/Resource/Equipment/JetPack/BP_EquipmentDescriptorJetPackMk2.BP_EquipmentDescriptorJetPackMk2_C" },
+	{ "JumpingStilts", "/Game/FactoryGame/Resource/Equipment/JumpingStilts/BP_EquipmentDescriptorJumpingStilts.BP_EquipmentDescriptorJumpingStilts_C" },
+	{ "Machinegun", "/Game/FactoryGame/Resource/Equipment/Machinegun/BP_EquipmentDescriptorMachinegun.BP_EquipmentDescriptorMachinegun_C" },
 	{ "RebarGun", "/Game/FactoryGame/Resource/Equipment/NailGun/Desc_RebarGun.Desc_RebarGun_C" },
 	{ "RebarGunProjectile", "/Game/FactoryGame/Resource/Equipment/NailGun/Desc_RebarGunProjectile.Desc_RebarGunProjectile_C" },
-	{ "EquipmentDescriptorNobeliskDetonator", "/Game/FactoryGame/Resource/Equipment/NobeliskDetonator/BP_EquipmentDescriptorNobeliskDetonator.BP_EquipmentDescriptorNobeliskDetonator_C" },
-	{ "ItemDescriptorPortableMiner", "/Game/FactoryGame/Resource/Equipment/PortableMiner/BP_ItemDescriptorPortableMiner.BP_ItemDescriptorPortableMiner_C" },
+	{ "NobeliskDetonatorEquip", "/Game/FactoryGame/Resource/Equipment/NobeliskDetonator/BP_EquipmentDescriptorNobeliskDetonator.BP_EquipmentDescriptorNobeliskDetonator_C" },
+	{ "PortableMiner", "/Game/FactoryGame/Resource/Equipment/PortableMiner/BP_ItemDescriptorPortableMiner.BP_ItemDescriptorPortableMiner_C" },
 	{ "RebarScatterGunProjectile", "/Game/FactoryGame/Resource/Equipment/RebarScatterGun/Desc_RebarScatterGunProjectile.Desc_RebarScatterGunProjectile_C" },
-	{ "EquipmentDescriptorResourceMiner", "/Game/FactoryGame/Resource/Equipment/ResourceMiner/BP_EquipmentDescriptorResourceMiner.BP_EquipmentDescriptorResourceMiner_C" },
-	{ "EquipmentDescriptorRifle", "/Game/FactoryGame/Resource/Equipment/Rifle/BP_EquipmentDescriptorRifle.BP_EquipmentDescriptorRifle_C" },
-	{ "EquipmentDescriptorRifleMk2", "/Game/FactoryGame/Resource/Equipment/Rifle/BP_EquipmentDescriptorRifleMk2.BP_EquipmentDescriptorRifleMk2_C" },
-	{ "EquipmentDescriptorShockShank", "/Game/FactoryGame/Resource/Equipment/ShockShank/BP_EquipmentDescriptorShockShank.BP_EquipmentDescriptorShockShank_C" },
-	{ "EquipmentDescriptorStunSpear", "/Game/FactoryGame/Resource/Equipment/StunSpear/BP_EquipmentDescriptorStunSpear.BP_EquipmentDescriptorStunSpear_C" },
+	{ "ResourceMiner", "/Game/FactoryGame/Resource/Equipment/ResourceMiner/BP_EquipmentDescriptorResourceMiner.BP_EquipmentDescriptorResourceMiner_C" },
+	{ "Rifle", "/Game/FactoryGame/Resource/Equipment/Rifle/BP_EquipmentDescriptorRifle.BP_EquipmentDescriptorRifle_C" },
+	{ "RifleMk2", "/Game/FactoryGame/Resource/Equipment/Rifle/BP_EquipmentDescriptorRifleMk2.BP_EquipmentDescriptorRifleMk2_C" },
+	{ "ShockShank", "/Game/FactoryGame/Resource/Equipment/ShockShank/BP_EquipmentDescriptorShockShank.BP_EquipmentDescriptorShockShank_C" },
+	{ "StunSpear", "/Game/FactoryGame/Resource/Equipment/StunSpear/BP_EquipmentDescriptorStunSpear.BP_EquipmentDescriptorStunSpear_C" },
 	{ "ToolBelt", "/Game/FactoryGame/Resource/Equipment/ToolBelt/Desc_ToolBelt.Desc_ToolBelt_C" },
 	{ "CharacterClap_Statue", "/Game/FactoryGame/Resource/Equipment/Decoration/Desc_CharacterClap_Statue.Desc_CharacterClap_Statue_C" },
 	{ "CharacterRunStatue", "/Game/FactoryGame/Resource/Equipment/Decoration/Desc_CharacterRunStatue.Desc_CharacterRunStatue_C" },
@@ -283,8 +386,10 @@ const TMap<FString, FString> StreamIntegration::ItemMap = {
 	{ "SpaceGiraffeStatue", "/Game/FactoryGame/Resource/Equipment/Decoration/Desc_SpaceGiraffeStatue.Desc_SpaceGiraffeStatue_C" },
 	{ "Berry", "/Game/FactoryGame/Resource/Environment/Berry/Desc_Berry.Desc_Berry_C" },
 	{ "Medkit", "/Game/FactoryGame/Resource/Equipment/Medkit/Desc_Medkit.Desc_Medkit_C" },
+	{ "Nut", "/Game/FactoryGame/Resource/Environment/Nut/Desc_Nut.Desc_Nut_C" },
+	{ "Shroom", "/Game/FactoryGame/Resource/Environment/DesertShroom/Desc_Shroom.Desc_Shroom_C" },
 	{ "HealthGainDescriptor", "/Game/FactoryGame/Resource/BP_HealthGainDescriptor.BP_HealthGainDescriptor_C" },
-	{ "EquipmentDescriptorBeacon", "/Game/FactoryGame/Resource/Equipment/Beacon/BP_EquipmentDescriptorBeacon.BP_EquipmentDescriptorBeacon_C" },
+	{ "Beacon", "/Game/FactoryGame/Resource/Equipment/Beacon/BP_EquipmentDescriptorBeacon.BP_EquipmentDescriptorBeacon_C" },
 	{ "Parachute", "/Game/FactoryGame/Resource/Equipment/Beacon/Desc_Parachute.Desc_Parachute_C" },
 	{ "CyberWagon", "/Game/FactoryGame/Buildable/Vehicle/Cyberwagon/Desc_CyberWagon.Desc_CyberWagon_C" },
 	{ "Explorer", "/Game/FactoryGame/Buildable/Vehicle/Explorer/Desc_Explorer.Desc_Explorer_C" },

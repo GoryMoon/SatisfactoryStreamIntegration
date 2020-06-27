@@ -1,5 +1,6 @@
 #pragma once
 
+#include "Curves/CurveFloat.h"
 #include "Modules/ModuleManager.h"
 
 
@@ -16,13 +17,15 @@ namespace StreamIntegration
 	};
 	
 	static SIConfig* CurrentConfig;
+	static UCurveFloat* NoFallDamage = nullptr;
 
 	SI_API extern const SIConfig& GetConfig();
 
 	static bool Running;
 
 	SI_API extern bool IsRunning();
-	
+
+	SI_API extern UCurveFloat* GetFallDamageOverride();
 }
 
 class FSIModule : public FDefaultGameModuleImpl {
@@ -33,5 +36,4 @@ public:
 
 	virtual bool IsGameModule() const override { return true; }
 };
-
 

@@ -1,12 +1,15 @@
 #pragma once
 
 #include "SIModule.h"
-#include "action/Work.h"
+
 #include "CoreMinimal.h"
 #include "action/ActionHandler.h"
+#include "action/Work.h"
+
+#include "util/Logging.h"
 #include "Async/AsyncWork.h"
 #include "Delegates/Delegate.h"
-#include "util/Logging.h"
+
 
 #include "IntegrationSubsystem.generated.h"
 
@@ -38,11 +41,12 @@ public:
 	}
 	
 protected:
+	UFUNCTION()
 	void Update();
 
 	FTimerHandle UpdateTimerHandle;
 	FThreadSafeBool bStopTask = false;
-	class FActionHandler* ActionHandler = nullptr;
+	class AActionHandler* ActionHandler = nullptr;
 	
 	void SendMessageToAll(const FString& Message, const FLinearColor& Color) const;
 };
