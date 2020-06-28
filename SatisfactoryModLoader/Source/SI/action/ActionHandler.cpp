@@ -52,17 +52,20 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
-		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
-		UFGInventoryComponent* Inventory = Character->GetInventory();
-		const auto Spread = JsonObject->GetIntegerField("spread");
-		
-		TArray<FInventoryStack> Stacks{};
-		Inventory->GetInventoryStacks(Stacks);
-		for (auto Stack: Stacks)
+		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
+		if (Character)
 		{
-			StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
+			UFGInventoryComponent* Inventory = Character->GetInventory();
+			const auto Spread = JsonObject->GetIntegerField("spread");
+
+			TArray<FInventoryStack> Stacks{};
+			Inventory->GetInventoryStacks(Stacks);
+			for (auto Stack : Stacks)
+			{
+				StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
+			}
+			Inventory->Empty();
 		}
-		Inventory->Empty();
 	}
 	else
 	{
@@ -75,22 +78,41 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
-		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
-
-		const auto ID = JsonObject->GetStringField("id");
-		const int32 Amount = JsonObject->GetIntegerField("amount");
-		const bool bDrop = JsonObject->GetBoolField("drop");
-		const auto Spread = JsonObject->GetIntegerField("spread");
-
-		if (ID == "ALL")
+		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
+		if (Character)
 		{
-			TArray<FString> Items;
-			StreamIntegration::Utility::Item::ItemMap.GetKeys(Items);
-			for (const auto ItemString : Items)
+			const auto ID = JsonObject->GetStringField("id");
+			const int32 Amount = JsonObject->GetIntegerField("amount");
+			const bool bDrop = JsonObject->GetBoolField("drop");
+			const auto Spread = JsonObject->GetIntegerField("spread");
+
+			if (ID == "ALL")
 			{
+				TArray<FString> Items;
+				StreamIntegration::Utility::Item::ItemMap.GetKeys(Items);
+				for (const auto ItemString : Items)
+				{
+					try
+					{
+						const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ItemString);
+						if (Stack.Item.IsValid())
+						{
+							if (bDrop)
+								StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
+							else
+								StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
+						}
+					}
+					catch (int e)
+					{
+						SI_ERROR("ERROR creating item: ", e);
+					}
+				}
+			}
+			else {
 				try
 				{
-					const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ItemString);
+					const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ID);
 					if (Stack.Item.IsValid())
 					{
 						if (bDrop)
@@ -105,23 +127,6 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 				}
 			}
 		}
-		else {
-			try
-			{
-				const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ID);
-				if (Stack.Item.IsValid())
-				{
-					if (bDrop)
-						StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
-					else
-						StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
-				}
-			}
-			catch (int e)
-			{
-				SI_ERROR("ERROR creating item: ", e);
-			}
-		}
 	}
 	else
 	{
@@ -134,14 +139,19 @@ void AActionHandler::HandleHealPlayer(TSharedPtr<FJsonObject> JsonObject) const
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
-		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
+		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
+		if (Character)
+		{
+			const auto Controller = Cast<AFGPlayerController>(Character->GetController());
+			if (Controller && Character->IsAliveAndWell() && !Controller->NeedRespawn()) {
+				const float Amount = JsonObject->GetNumberField("amount");
 
-		const float Amount = JsonObject->GetNumberField("amount");
-		
-		const auto HealthComponent = Character->GetHealthComponent();
-		HealthComponent->Heal(Amount);
-		if (HealthComponent->GetCurrentHealth() <= 0)
-			HealthComponent->Kill();
+				const auto HealthComponent = Character->GetHealthComponent();
+				HealthComponent->Heal(Amount);
+				if (HealthComponent->GetCurrentHealth() <= 0)
+					HealthComponent->Kill();
+			}
+		}
 	}
 	else
 	{
@@ -154,39 +164,42 @@ void AActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject)
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
-		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
-		const float Amount = JsonObject->GetNumberField("amount");
-		float AmountVertical = JsonObject->GetNumberField("amount_vertical");
-		const float NoFallDamage = JsonObject->GetNumberField("no_fall_damage");
-
-		if (AmountVertical == -1)
+		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
+		if (Character)
 		{
-			AmountVertical = Amount / 10;
-		}
-		
-		auto MoveVector = FMath::VRand() * (Amount * 100);
-		MoveVector.Z = AmountVertical * 100;
-		auto MovementComponent = Character->GetFGMovementComponent();
-		MovementComponent->SetGeneralVelocity(MoveVector + MovementComponent->GetVelocity());
-		Character->Jump();
+			const float Amount = JsonObject->GetNumberField("amount");
+			float AmountVertical = JsonObject->GetNumberField("amount_vertical");
+			const float NoFallDamage = JsonObject->GetNumberField("no_fall_damage");
 
-		const UCurveFloat* OldCurve = nullptr;
-		if (UProperty* Property = Character->GetClass()->FindPropertyByName(TEXT("mFallDamageCurveOverride")))
-		{
-			if (UObjectProperty* ObjProperty = Cast<UObjectProperty>(Property))
+			if (AmountVertical == -1)
 			{
-				OldCurve = ObjProperty->ContainerPtrToValuePtr<UCurveFloat>(Character);
-				if (!IsValid(OldCurve) || (OldCurve->FloatCurve.Keys.Num() != 0 && !OldCurve->FloatCurve.Keys.IsValidIndex(0)))
+				AmountVertical = Amount / 10;
+			}
+
+			auto MoveVector = FMath::VRand() * (Amount * 100);
+			MoveVector.Z = AmountVertical * 100;
+			auto MovementComponent = Character->GetFGMovementComponent();
+			MovementComponent->SetGeneralVelocity(MoveVector + MovementComponent->GetVelocity());
+			Character->Jump();
+
+			const UCurveFloat* OldCurve = nullptr;
+			if (UProperty* Property = Character->GetClass()->FindPropertyByName(TEXT("mFallDamageCurveOverride")))
+			{
+				if (UObjectProperty* ObjProperty = Cast<UObjectProperty>(Property))
 				{
-					SI_DEBUG("Old curve no valid, using null");
-					OldCurve = nullptr;
+					OldCurve = ObjProperty->ContainerPtrToValuePtr<UCurveFloat>(Character);
+					if (!IsValid(OldCurve) || (OldCurve->FloatCurve.Keys.Num() != 0 && !OldCurve->FloatCurve.Keys.IsValidIndex(0)))
+					{
+						SI_DEBUG("Old curve no valid, using null");
+						OldCurve = nullptr;
+					}
 				}
 			}
+			Character->SetFallDamageOverride(StreamIntegration::GetFallDamageOverride());
+
+			MovePlayerDelegate.BindUFunction(this, FName("ResetFallDamage"), Character, OldCurve);
+			GetWorldTimerManager().SetTimer(MovePlayerTimerHandle, MovePlayerDelegate, NoFallDamage, false);
 		}
-		Character->SetFallDamageOverride(StreamIntegration::GetFallDamageOverride());
-		
-		MovePlayerDelegate.BindUFunction(this, FName("ResetFallDamage"), Character, OldCurve);
-		GetWorldTimerManager().SetTimer(MovePlayerTimerHandle, MovePlayerDelegate, NoFallDamage, false);
 	}
 	else
 	{
@@ -206,13 +219,16 @@ void AActionHandler::HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
-		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
-		const int32 Amount = JsonObject->GetIntegerField("amount");
-		const FString ID = JsonObject->GetStringField("id");
-		const float Radius = JsonObject->GetNumberField("radius"); 
-		const bool Persistent = JsonObject->GetBoolField("persistent");
+		auto* Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
+		if (Character)
+		{
+			const int32 Amount = JsonObject->GetIntegerField("amount");
+			const FString ID = JsonObject->GetStringField("id");
+			const float Radius = JsonObject->GetNumberField("radius");
+			const bool Persistent = JsonObject->GetBoolField("persistent");
 
-		StreamIntegration::Utility::Actor::SpawnCreature(Character, ID, Amount, Radius, Persistent);
+			StreamIntegration::Utility::Actor::SpawnCreature(Character, ID, Amount, Radius, Persistent);
+		}
 	}
 	else
 	{
@@ -225,15 +241,18 @@ void AActionHandler::HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
-		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
-		const int32 Amount = JsonObject->GetIntegerField("amount");
-		const float Time = JsonObject->GetNumberField("time");
-		const float Height = JsonObject->GetNumberField("height");
-		const float Radius = JsonObject->GetNumberField("radius");
-		const float Damage = JsonObject->GetNumberField("damage");
-		const float DamageRadius = JsonObject->GetNumberField("damage_radius");
+		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
+		if (Character)
+		{
+			const int32 Amount = JsonObject->GetIntegerField("amount");
+			const float Time = JsonObject->GetNumberField("time");
+			const float Height = JsonObject->GetNumberField("height");
+			const float Radius = JsonObject->GetNumberField("radius");
+			const float Damage = JsonObject->GetNumberField("damage");
+			const float DamageRadius = JsonObject->GetNumberField("damage_radius");
 
-		StreamIntegration::Utility::Actor::SpawnBomb(Character, Amount, Time, Height, Radius, Damage, DamageRadius);
+			StreamIntegration::Utility::Actor::SpawnBomb(Character, Amount, Time, Height, Radius, Damage, DamageRadius);
+		}
 	}
 	else
 	{
@@ -246,19 +265,29 @@ void AActionHandler::HandleEmote(TSharedPtr<FJsonObject> JsonObject) const
 	const auto Player = GetTarget(JsonObject);
 	if (Player != nullptr)
 	{
-		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
+		const auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
 		const FString Style = JsonObject->GetStringField("style");
 
-		if (Style == TEXT("Clap"))
+		if (Character)
 		{
-			StreamIntegration::Utility::Character::PlayClapEmote(Character);
-		} else if (Style == TEXT("Naruto"))
-		{
-			StreamIntegration::Utility::Character::PlayNarutoEmote(Character);
-		} else if (Style == TEXT("Spin"))
-		{
-			StreamIntegration::Utility::Character::PlaySpinEmote(Character);
+			const auto Controller = Cast<AFGPlayerController>(Character->GetController());
+			if (Controller && Character->IsAliveAndWell() && !Controller->NeedRespawn()) {
+
+				if (Style == TEXT("Clap"))
+				{
+					StreamIntegration::Utility::Character::PlayClapEmote(Character);
+				}
+				else if (Style == TEXT("Naruto"))
+				{
+					StreamIntegration::Utility::Character::PlayNarutoEmote(Character);
+				}
+				else if (Style == TEXT("Spin"))
+				{
+					StreamIntegration::Utility::Character::PlaySpinEmote(Character);
+				}
+			}
 		}
+		
 	}
 	else
 	{
