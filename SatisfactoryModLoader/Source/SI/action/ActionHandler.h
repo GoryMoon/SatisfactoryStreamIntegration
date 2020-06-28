@@ -27,6 +27,7 @@ public:
 		Actions.Add(TEXT("move_player"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleMovePlayer));
 		Actions.Add(TEXT("spawn_mob"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleSpawnMob));
 		Actions.Add(TEXT("drop_bomb"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleDropBomb));
+		Actions.Add(TEXT("emote"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleEmote));
 	}
 
 	void HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject);
@@ -45,7 +46,8 @@ protected:
 	void HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject);
 	void HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const;
 	void HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const;
-
+	void HandleEmote(TSharedPtr<FJsonObject> JsonObject) const;
+	
 	FTimerHandle MovePlayerTimerHandle;
 	FTimerDelegate MovePlayerDelegate;
 };

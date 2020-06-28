@@ -5,6 +5,7 @@
 #include "FGHealthComponent.h"
 #include "FGInventoryComponentBeltSlot.h"
 #include "Utility.h"
+#include "CharacterUtility.h"
 #include "player/PlayerUtility.h"
 
 void AActionHandler::HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject)
@@ -59,7 +60,7 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 		Inventory->GetInventoryStacks(Stacks);
 		for (auto Stack: Stacks)
 		{
-			StreamIntegration::DropItem(Character, Stack, Spread);
+			StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
 		}
 		Inventory->Empty();
 	}
@@ -84,18 +85,18 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 		if (ID == "ALL")
 		{
 			TArray<FString> Items;
-			StreamIntegration::ItemMap.GetKeys(Items);
+			StreamIntegration::Utility::Item::ItemMap.GetKeys(Items);
 			for (const auto ItemString : Items)
 			{
 				try
 				{
-					const auto Stack = StreamIntegration::CreateItemStack(Amount, ItemString);
+					const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ItemString);
 					if (Stack.Item.IsValid())
 					{
 						if (bDrop)
-							StreamIntegration::DropItem(Character, Stack, Spread);
+							StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
 						else
-							StreamIntegration::GiveItem(Character, Stack, Spread);
+							StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
 					}
 				}
 				catch (int e)
@@ -107,13 +108,13 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 		else {
 			try
 			{
-				const auto Stack = StreamIntegration::CreateItemStack(Amount, ID);
+				const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ID);
 				if (Stack.Item.IsValid())
 				{
 					if (bDrop)
-						StreamIntegration::DropItem(Character, Stack, Spread);
+						StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
 					else
-						StreamIntegration::GiveItem(Character, Stack, Spread);
+						StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
 				}
 			}
 			catch (int e)
@@ -211,7 +212,7 @@ void AActionHandler::HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const
 		const float Radius = JsonObject->GetNumberField("radius"); 
 		const bool Persistent = JsonObject->GetBoolField("persistent");
 
-		StreamIntegration::SpawnCreature(Character, ID, Amount, Radius, Persistent);
+		StreamIntegration::Utility::Actor::SpawnCreature(Character, ID, Amount, Radius, Persistent);
 	}
 	else
 	{
@@ -232,12 +233,38 @@ void AActionHandler::HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const
 		const float Damage = JsonObject->GetNumberField("damage");
 		const float DamageRadius = JsonObject->GetNumberField("damage_radius");
 
-		StreamIntegration::SpawnBomb(Character, Amount, Time, Height, Radius, Damage, DamageRadius);
+		StreamIntegration::Utility::Actor::SpawnBomb(Character, Amount, Time, Height, Radius, Damage, DamageRadius);
 	}
 	else
 	{
 		SI_ERROR("Player was NULL, config is probably incorrect");
 	}
+}
+
+void AActionHandler::HandleEmote(TSharedPtr<FJsonObject> JsonObject) const
+{
+	const auto Player = GetTarget(JsonObject);
+	if (Player != nullptr)
+	{
+		auto* Character = static_cast<AFGCharacterPlayer*>(Player->GetCharacter());
+		const FString Style = JsonObject->GetStringField("style");
+
+		if (Style == TEXT("Clap"))
+		{
+			StreamIntegration::Utility::Character::PlayClapEmote(Character);
+		} else if (Style == TEXT("Naruto"))
+		{
+			StreamIntegration::Utility::Character::PlayNarutoEmote(Character);
+		} else if (Style == TEXT("Spin"))
+		{
+			StreamIntegration::Utility::Character::PlaySpinEmote(Character);
+		}
+	}
+	else
+	{
+		SI_ERROR("Player was NULL, config is probably incorrect");
+	}
+	
 }
 
 

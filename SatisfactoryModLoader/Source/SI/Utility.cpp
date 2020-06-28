@@ -14,7 +14,7 @@ static FORCEINLINE UClass* LoadClassFromPath(const FString& Path)
 	return StaticLoadClass(UObject::StaticClass(), NULL, *Path, NULL, LOAD_None, NULL);
 }
 
-UClass* StreamIntegration::FindClass(const TCHAR* ClassName)
+UClass* StreamIntegration::Utility::FindClass(const TCHAR* ClassName)
 {
 	UClass* LoadedActorOwnerClass = FindObject<UClass>(ANY_PACKAGE, ClassName);
 	if (LoadedActorOwnerClass == NULL)
@@ -35,7 +35,7 @@ UClass* StreamIntegration::FindClass(const TCHAR* ClassName)
     return LoadedActorOwnerClass;
 }
 
-bool StreamIntegration::GetFromMap(TMap<FString, FString> Map, const FString Name, UClass** OutClass)
+bool StreamIntegration::Utility::GetFromMap(TMap<FString, FString> Map, const FString Name, UClass** OutClass)
 {
 	const auto ClassName = Map.Find(Name);
 	if (ClassName != nullptr)
@@ -52,17 +52,15 @@ bool StreamIntegration::GetFromMap(TMap<FString, FString> Map, const FString Nam
 }
 
 
-bool StreamIntegration::GetItem(const FString ItemName, UClass **Item)
+
+
+
+bool StreamIntegration::Utility::Item::GetItem(const FString ItemName, UClass **Item)
 {
 	return GetFromMap(ItemMap, ItemName, Item);
 }
 
-bool StreamIntegration::GetCreature(FString CreatureName, UClass** Creature)
-{
-	return GetFromMap(CreatureMap, CreatureName, Creature);
-}
-
-FInventoryStack StreamIntegration::CreateItemStack(const int Amount, FString ItemId)
+FInventoryStack StreamIntegration::Utility::Item::CreateItemStack(const int Amount, FString ItemId)
 {
 	SI_DEBUG("Creating itemstack: ", *ItemId);
 	FInventoryItem Item;
@@ -78,7 +76,7 @@ FInventoryStack StreamIntegration::CreateItemStack(const int Amount, FString Ite
 	return UFGInventoryLibrary::MakeInventoryStack(Amount, Item);
 }
 
-void StreamIntegration::DropItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, const int Spread)
+void StreamIntegration::Utility::Item::DropItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, const int Spread)
 {
 	FRotator OutRotation;
 	FVector OutPosition;
@@ -87,7 +85,7 @@ void StreamIntegration::DropItem(AFGCharacterPlayer* Player, const FInventorySta
 	SI_DEBUG("Dropped item");
 }
 
-void StreamIntegration::GiveItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, const int Spread)
+void StreamIntegration::Utility::Item::GiveItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, const int Spread)
 {
 	const auto Amount = Player->GetInventory()->AddStack(Stack, true);
 	if (Amount < Stack.NumItems)
@@ -96,7 +94,16 @@ void StreamIntegration::GiveItem(AFGCharacterPlayer* Player, const FInventorySta
 		SI_DEBUG("Gave item");
 }
 
-void StreamIntegration::SpawnCreature(AFGCharacterPlayer* Player, FString CreatureID, const int Amount, const float Radius, bool Persistent)
+
+
+
+
+bool StreamIntegration::Utility::Actor::GetCreature(FString CreatureName, UClass** Creature)
+{
+	return GetFromMap(CreatureMap, CreatureName, Creature);
+}
+
+void StreamIntegration::Utility::Actor::SpawnCreature(AFGCharacterPlayer* Player, FString CreatureID, const int Amount, const float Radius, bool Persistent)
 {
 	const auto Transform = Player->GetTransform();
 	auto World = Player->GetWorld();
@@ -146,7 +153,7 @@ void StreamIntegration::SpawnCreature(AFGCharacterPlayer* Player, FString Creatu
 	}
 }
 
-void StreamIntegration::SpawnBomb(AFGCharacterPlayer* Player, const int Amount, const float Time, const float Height, const float Radius, const float Damage, const float DamageRadius)
+void StreamIntegration::Utility::Actor::SpawnBomb(AFGCharacterPlayer* Player, const int Amount, const float Time, const float Height, const float Radius, const float Damage, const float DamageRadius)
 {
 	const auto Transform = Player->GetTransform();
 	auto World = Player->GetWorld();
@@ -194,7 +201,7 @@ void StreamIntegration::SpawnBomb(AFGCharacterPlayer* Player, const int Amount, 
 	}
 }
 
-void StreamIntegration::SetBoolProperty(UObject* Obj, const FName Prop, const bool bValue)
+void StreamIntegration::Utility::SetBoolProperty(UObject* Obj, const FName Prop, const bool bValue)
 {
 	SI_DEBUG("Set prop: ", *Prop.ToString(), " to ", (bValue ? "True" : "False"));
 	
@@ -213,7 +220,7 @@ void StreamIntegration::SetBoolProperty(UObject* Obj, const FName Prop, const bo
 	}
 }
 
-void StreamIntegration::SetFloatProperty(UObject* Obj, const FName Prop, const float Value)
+void StreamIntegration::Utility::SetFloatProperty(UObject* Obj, const FName Prop, const float Value)
 {
 	SI_DEBUG("Set prop: ", *Prop.ToString(), " to ", Value);
 
@@ -232,7 +239,9 @@ void StreamIntegration::SetFloatProperty(UObject* Obj, const FName Prop, const f
 	}
 }
 
-const TMap<FString, FString> StreamIntegration::ItemMap = {
+
+
+const TMap<FString, FString> StreamIntegration::Utility::Item::ItemMap = {
 	{ "WAT1", "/Game/FactoryGame/Prototype/WAT/Desc_WAT1.Desc_WAT1_C" },
 	{ "WAT2", "/Game/FactoryGame/Prototype/WAT/Desc_WAT2.Desc_WAT2_C" },
 	{ "HardDrive", "/Game/FactoryGame/Resource/Environment/CrashSites/Desc_HardDrive.Desc_HardDrive_C" },
@@ -399,7 +408,7 @@ const TMap<FString, FString> StreamIntegration::ItemMap = {
 	{ "Truck", "/Game/FactoryGame/Buildable/Vehicle/Truck/Desc_Truck.Desc_Truck_C" }
 };
 
-const TMap<FString, FString> StreamIntegration::CreatureMap = {
+const TMap<FString, FString> StreamIntegration::Utility::Actor::CreatureMap = {
 	{ "Manta", "/Game/FactoryGame/Character/Creature/Wildlife/Manta/BP_Manta.BP_Manta_C" },
 	{ "SpaceGiraffe", "/Game/FactoryGame/Character/Creature/Wildlife/SpaceGiraffe/Char_SpaceGiraffe.Char_SpaceGiraffe_C" },
 	{ "SpaceRabbit", "/Game/FactoryGame/Character/Creature/Wildlife/SpaceRabbit/Char_SpaceRabbit.Char_SpaceRabbit_C" },
