@@ -103,7 +103,7 @@ bool StreamIntegration::Utility::Actor::GetCreature(FString CreatureName, UClass
 	return GetFromMap(CreatureMap, CreatureName, Creature);
 }
 
-void StreamIntegration::Utility::Actor::SpawnCreature(AFGCharacterPlayer* Player, FString CreatureID, const int Amount, const float Radius, bool Persistent)
+auto StreamIntegration::Utility::Actor::SpawnCreature(AFGCharacterPlayer* Player, const FString CreatureID, const int Amount, const float Radius, const bool Persistent, const float ScaleMin, float ScaleMax) -> void
 {
 	const auto Transform = Player->GetTransform();
 	auto World = Player->GetWorld();
@@ -130,6 +130,9 @@ void StreamIntegration::Utility::Actor::SpawnCreature(AFGCharacterPlayer* Player
 				{
 					SetBoolProperty(Actor, TEXT("mNeedsSpawner"), false);
 					Cast<AFGCreature>(Actor)->SetPersistent(true);
+					auto Scale = FVector::OneVector;
+					Scale *= FMath::RandRange(ScaleMin, ScaleMax);
+					Actor->SetActorScale3D(Scale);
 					
 					if (UProperty* Property = Actor->GetClass()->FindPropertyByName(TEXT("mKillOrphanHandle")))
 					{

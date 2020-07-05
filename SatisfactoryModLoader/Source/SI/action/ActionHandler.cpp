@@ -3,7 +3,8 @@
 #include "FGAISystem.h"
 #include "FGCharacterMovementComponent.h"
 #include "FGHealthComponent.h"
-#include "FGInventoryComponentBeltSlot.h"
+#include "FGWheeledVehicle.h"
+#include "WheeledVehicleMovementComponent.h"
 #include "Utility.h"
 #include "CharacterUtility.h"
 #include "player/PlayerUtility.h"
@@ -50,10 +51,10 @@ AFGPlayerController* AActionHandler::GetTarget(const TSharedPtr<FJsonObject> Jso
 void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
-	if (Player != nullptr)
+	if (IsValid(Player))
 	{
-		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
-		if (Character)
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
 		{
 			UFGInventoryComponent* Inventory = Character->GetInventory();
 			const auto Spread = JsonObject->GetIntegerField("spread");
@@ -76,10 +77,10 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
-	if (Player != nullptr)
+	if (IsValid(Player))
 	{
-		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
-		if (Character)
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
 		{
 			const auto ID = JsonObject->GetStringField("id");
 			const int32 Amount = JsonObject->GetIntegerField("amount");
@@ -137,13 +138,12 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 void AActionHandler::HandleHealPlayer(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
-	if (Player != nullptr)
+	if (IsValid(Player))
 	{
-		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
-		if (Character)
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
 		{
-			const auto Controller = Cast<AFGPlayerController>(Character->GetController());
-			if (Controller && Character->IsAliveAndWell() && !Controller->NeedRespawn()) {
+			if (Character->IsAliveAndWell() && !Player->NeedRespawn()) {
 				const float Amount = JsonObject->GetNumberField("amount");
 
 				const auto HealthComponent = Character->GetHealthComponent();
@@ -162,10 +162,10 @@ void AActionHandler::HandleHealPlayer(TSharedPtr<FJsonObject> JsonObject) const
 void AActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject)
 {
 	const auto Player = GetTarget(JsonObject);
-	if (Player != nullptr)
+	if (IsValid(Player))
 	{
-		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
-		if (Character)
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
 		{
 			const float Amount = JsonObject->GetNumberField("amount");
 			float AmountVertical = JsonObject->GetNumberField("amount_vertical");
@@ -178,27 +178,45 @@ void AActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject)
 
 			auto MoveVector = FMath::VRand() * (Amount * 100);
 			MoveVector.Z = AmountVertical * 100;
-			auto MovementComponent = Character->GetFGMovementComponent();
-			MovementComponent->SetGeneralVelocity(MoveVector + MovementComponent->GetVelocity());
-			Character->Jump();
-
-			const UCurveFloat* OldCurve = nullptr;
-			if (UProperty* Property = Character->GetClass()->FindPropertyByName(TEXT("mFallDamageCurveOverride")))
+			if (Character->IsDrivingVehicle())
 			{
-				if (UObjectProperty* ObjProperty = Cast<UObjectProperty>(Property))
+				const auto Vehicle = Cast<AFGWheeledVehicle>(Character->GetDrivenVehicle());
+				if (IsValid(Vehicle))
 				{
-					OldCurve = ObjProperty->ContainerPtrToValuePtr<UCurveFloat>(Character);
-					if (!IsValid(OldCurve) || (OldCurve->FloatCurve.Keys.Num() != 0 && !OldCurve->FloatCurve.Keys.IsValidIndex(0)))
-					{
-						SI_DEBUG("Old curve no valid, using null");
-						OldCurve = nullptr;
-					}
+					auto VehicleMovementComponent = Vehicle->GetVehicleMovementComponent();
+					VehicleMovementComponent->Velocity += MoveVector;
+					
+					auto VehicleTransform = Vehicle->GetActorTransform();
+					VehicleTransform.SetLocation(VehicleTransform.GetLocation() + MoveVector);
+					Vehicle->SetActorTransform(VehicleTransform, false, nullptr, ETeleportType::TeleportPhysics);
+					
+					SI_DEBUG("Set new vehicle position");
 				}
 			}
-			Character->SetFallDamageOverride(StreamIntegration::GetFallDamageOverride());
+			else
+			{
+				auto MovementComponent = Character->GetFGMovementComponent();
+				MovementComponent->SetGeneralVelocity(MoveVector + MovementComponent->GetVelocity());
+				Character->Jump();
+				
+				const UCurveFloat* OldCurve = nullptr;
+				if (UProperty* Property = Character->GetClass()->FindPropertyByName(TEXT("mFallDamageCurveOverride")))
+				{
+					if (UObjectProperty* ObjProperty = Cast<UObjectProperty>(Property))
+					{
+						OldCurve = ObjProperty->ContainerPtrToValuePtr<UCurveFloat>(Character);
+						if (!IsValid(OldCurve) || (OldCurve->FloatCurve.Keys.Num() != 0 && !OldCurve->FloatCurve.Keys.IsValidIndex(0)))
+						{
+							SI_DEBUG("Old curve no valid, using null");
+							OldCurve = nullptr;
+						}
+					}
+				}
+				Character->SetFallDamageOverride(StreamIntegration::GetFallDamageOverride());
 
-			MovePlayerDelegate.BindUFunction(this, FName("ResetFallDamage"), Character, OldCurve);
-			GetWorldTimerManager().SetTimer(MovePlayerTimerHandle, MovePlayerDelegate, NoFallDamage, false);
+				MovePlayerDelegate.BindUFunction(this, FName("ResetFallDamage"), Character, OldCurve);
+				GetWorldTimerManager().SetTimer(MovePlayerTimerHandle, MovePlayerDelegate, NoFallDamage, false);
+			}
 		}
 	}
 	else
@@ -217,17 +235,19 @@ void AActionHandler::ResetFallDamage(AFGCharacterPlayer* Player, UCurveFloat* Cu
 void AActionHandler::HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
-	if (Player != nullptr)
+	if (IsValid(Player))
 	{
-		auto* Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
-		if (Character)
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
 		{
 			const int32 Amount = JsonObject->GetIntegerField("amount");
 			const FString ID = JsonObject->GetStringField("id");
 			const float Radius = JsonObject->GetNumberField("radius");
 			const bool Persistent = JsonObject->GetBoolField("persistent");
+			const float ScaleMin = JsonObject->GetNumberField("scale_min");
+			const float ScaleMax = JsonObject->GetNumberField("scale_max");
 
-			StreamIntegration::Utility::Actor::SpawnCreature(Character, ID, Amount, Radius, Persistent);
+			StreamIntegration::Utility::Actor::SpawnCreature(Character, ID, Amount, Radius, Persistent, ScaleMin, ScaleMax);
 		}
 	}
 	else
@@ -239,10 +259,10 @@ void AActionHandler::HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const
 void AActionHandler::HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
-	if (Player != nullptr)
+	if (IsValid(Player))
 	{
-		auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
-		if (Character)
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
 		{
 			const int32 Amount = JsonObject->GetIntegerField("amount");
 			const float Time = JsonObject->GetNumberField("time");
@@ -263,15 +283,13 @@ void AActionHandler::HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const
 void AActionHandler::HandleEmote(TSharedPtr<FJsonObject> JsonObject) const
 {
 	const auto Player = GetTarget(JsonObject);
-	if (Player != nullptr)
+	if (IsValid(Player))
 	{
-		const auto Character = Cast<AFGCharacterPlayer>(Player->GetCharacter());
-		const FString Style = JsonObject->GetStringField("style");
-
-		if (Character)
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
 		{
-			const auto Controller = Cast<AFGPlayerController>(Character->GetController());
-			if (Controller && Character->IsAliveAndWell() && !Controller->NeedRespawn()) {
+			const FString Style = JsonObject->GetStringField("style");
+			if (Character->IsAliveAndWell() && !Player->NeedRespawn()) {
 
 				if (Style == TEXT("Clap"))
 				{

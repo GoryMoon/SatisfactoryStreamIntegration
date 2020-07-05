@@ -1,4 +1,5 @@
 #include "CharacterUtility.h"
+#include "FGDriveablePawn.h"
 #include "util/Logging.h"
 
 template<typename T>
@@ -37,4 +38,29 @@ void StreamIntegration::Utility::Character::PlaySpinEmote(AFGCharacterPlayer* Ch
 	UFunction* Func = Character->GetClass()->FindFunctionByName(FName("ShowEmote"));
 	int32 ID = 2;
 	Character->ProcessEvent(Func, &ID);
+}
+
+// Based on decompiled GetControlledCharacter from FGPlayerController
+AFGCharacterBase* StreamIntegration::Utility::Character::GetControlledCharacter(AFGPlayerController* Player)
+{
+	const auto Pawn = Player->GetPawn();
+	if (IsValid(Pawn))
+	{
+		const auto CharacterBase = Cast<AFGCharacterBase>(Pawn);
+		if (IsValid(CharacterBase))
+		{
+			return CharacterBase;
+		}
+		const auto DriveablePawn = Cast<AFGDriveablePawn>(Pawn);
+		if (IsValid(DriveablePawn))
+		{
+			return DriveablePawn->GetDriver();
+		}
+	}
+	return nullptr;
+}
+
+AFGCharacterPlayer* StreamIntegration::Utility::Character::GetPlayerCharacter(AFGPlayerController* const Player)
+{
+	return Cast<AFGCharacterPlayer>(GetControlledCharacter(Player));
 }

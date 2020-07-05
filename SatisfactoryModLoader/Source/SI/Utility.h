@@ -20,7 +20,7 @@ namespace StreamIntegration
 			SI_API extern void SpawnBomb(AFGCharacterPlayer* Player, int Amount, float Time, float Height, float Radius, const float Damage, const float DamageRadius);
 		
 			SI_API extern bool GetCreature(FString CreatureName, OUT UClass** Creature);
-			SI_API extern void SpawnCreature(AFGCharacterPlayer* Player, FString CreatureID, int Amount, float Radius = 10, bool Persistent = true);
+			SI_API extern void SpawnCreature(AFGCharacterPlayer* Player, FString CreatureID, int Amount, float Radius, bool Persistent, float ScaleMin, float ScaleMax);
 			SI_API extern const TMap<FString, FString> CreatureMap;
 		}
 

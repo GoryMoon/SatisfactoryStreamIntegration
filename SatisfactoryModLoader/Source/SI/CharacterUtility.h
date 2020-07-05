@@ -15,6 +15,8 @@ namespace StreamIntegration
 			SI_API extern void PlayNarutoEmote(AFGCharacterPlayer* Character);
 			SI_API extern void PlaySpinEmote(AFGCharacterPlayer* Character);
 
+			SI_API extern class AFGCharacterBase* GetControlledCharacter(AFGPlayerController* Player);
+			SI_API FORCEINLINE extern class AFGCharacterPlayer* GetPlayerCharacter(AFGPlayerController* const Player);
 		}
 	}
 }
