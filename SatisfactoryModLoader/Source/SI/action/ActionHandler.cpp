@@ -7,6 +7,9 @@
 #include "WheeledVehicleMovementComponent.h"
 #include "Utility.h"
 #include "CharacterUtility.h"
+#include "FGCrate.h"
+#include "FGInventoryLibrary.h"
+#include "FGItemPickup_Spawnable.h"
 #include "player/PlayerUtility.h"
 
 void AActionHandler::HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject)
@@ -56,16 +59,51 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
 		if (IsValid(Character))
 		{
-			UFGInventoryComponent* Inventory = Character->GetInventory();
 			const auto Spread = JsonObject->GetIntegerField("spread");
 
+			TInlineComponentArray<UFGInventoryComponent*, 24> InventoryComponents(Character);
 			TArray<FInventoryStack> Stacks{};
-			Inventory->GetInventoryStacks(Stacks);
+			for (auto InventoryComponent : InventoryComponents)
+			{
+				InventoryComponent->GetInventoryStacks(Stacks);
+				InventoryComponent->Empty();
+			}
+	
+			if (Stacks.Num() > 0)
+			{
+				const FInventoryStack CrateStack = Stacks[0];
+				Stacks.RemoveAt(0);
+				
+				TArray<FInventoryStack> CrateInventory{};
+				CrateInventory.Add(CrateStack);
+				TArray<AActor*> IgnoredActors{};
+				IgnoredActors.Add(Character);
+
+				FVector EndPosition = Character->GetActorLocation();
+				FVector* SpawnPosition = new FVector(EndPosition.X, EndPosition.Y, EndPosition.Z + 30);
+				FHitResult HitResult;
+				FCollisionQueryParams QueryParams;
+				QueryParams.AddIgnoredActor(Character);
+				QueryParams.MobilityType = EQueryMobilityType::Static;
+
+				if (GetWorld()->LineTraceSingleByChannel(HitResult, *SpawnPosition, EndPosition, ECC_WorldStatic, QueryParams))
+				{
+					SpawnPosition->Z = HitResult.ImpactPoint.Z + 8;
+				}
+				else
+				{
+					SpawnPosition->Z = EndPosition.Z;
+				}
+				
+				AFGCrate* Crate;
+				AFGItemPickup_Spawnable::SpawnInventoryCrate(GetWorld(), CrateInventory, *SpawnPosition, IgnoredActors, Crate);
+				Crate->OnRequestReprecentMarker();
+			}
+			
 			for (auto Stack : Stacks)
 			{
 				StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
 			}
-			Inventory->Empty();
 		}
 	}
 	else
