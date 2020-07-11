@@ -28,16 +28,17 @@ public:
 		Actions.Add(TEXT("spawn_mob"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleSpawnMob));
 		Actions.Add(TEXT("drop_bomb"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleDropBomb));
 		Actions.Add(TEXT("emote"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleEmote));
+		Actions.Add(TEXT("trigger_fuse"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleTriggerFuse));
 	}
 
-	void HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject);
+	bool HandleAction(FString From, FString Type, TSharedPtr<FJsonObject> JsonObject);
 
 	UFUNCTION()
 	void ResetFallDamage(AFGCharacterPlayer* Player, UCurveFloat* Curve);
 	
 protected:	
 	TMap<FString, const FActionDelegate> Actions;
-	
+
 	class AFGPlayerController* GetTarget(TSharedPtr<FJsonObject> Json) const;
 
 	void HandleInventoryBomb(TSharedPtr<FJsonObject> JsonObject) const;
@@ -47,6 +48,7 @@ protected:
 	void HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const;
 	void HandleDropBomb(TSharedPtr<FJsonObject> JsonObject) const;
 	void HandleEmote(TSharedPtr<FJsonObject> JsonObject) const;
+	void HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const;
 	
 	FTimerHandle MovePlayerTimerHandle;
 	FTimerDelegate MovePlayerDelegate;

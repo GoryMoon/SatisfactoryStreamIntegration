@@ -47,8 +47,6 @@ protected:
 	FTimerHandle UpdateTimerHandle;
 	FThreadSafeBool bStopTask = false;
 	class AActionHandler* ActionHandler = nullptr;
-	
-	void SendMessageToAll(const FString& Message, const FLinearColor& Color) const;
 };
 
 

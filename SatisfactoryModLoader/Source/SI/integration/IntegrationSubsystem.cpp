@@ -2,7 +2,6 @@
 
 #include "action/ActionHandler.h"
 #include "player/PlayerUtility.h"
-#include "player/component/SMLPlayerComponent.h"
 
 void AIntegrationSubsystem::BeginPlay()
 {
@@ -36,22 +35,9 @@ void AIntegrationSubsystem::Destroyed()
 	bStopTask = true;
 }
 
-
-FString ToTitle(const FString S)
-{
-	bool bLast = true;
-	FString Out = S.Replace(TEXT("_"), TEXT(" "));
-	for (int i = 0; i < Out.Len(); i++)
-	{
-		const TCHAR c = Out[i];
-		Out[i] = bLast ? toupper(c) : tolower(c);
-		bLast = isspace(c) == 1;
-	}
-	return Out;
-}
-
 void AIntegrationSubsystem::Update()
 {
+	TArray<FWork> RetryWork{};
 	FWork Work;
 	while (WorkQueue.Dequeue(Work))
 	{
@@ -59,7 +45,7 @@ void AIntegrationSubsystem::Update()
 		{
 			if (Work.bIsMessage)
 			{
-				SendMessageToAll(Work.Data, FLinearColor::Yellow);
+				StreamIntegration::Utility::SendMessageToAll(this, Work.Data, FLinearColor::Yellow);
 			}
 			else
 			{
@@ -69,10 +55,11 @@ void AIntegrationSubsystem::Update()
 				{
 					const auto Type = JsonObject->GetStringField(TEXT("type"));
 					auto From = JsonObject->GetStringField(TEXT("from"));
-					
-					ActionHandler->HandleAction(Type, JsonObject);
 
-					SendMessageToAll(From + FString(" ran action ") + ToTitle(Type), FLinearColor::Green);
+					if (!ActionHandler->HandleAction(From, Type, JsonObject))
+					{
+						RetryWork.Add(Work);
+					}
 				}	
 				else
 					SI_ERROR("Failed to parse action json data");
@@ -81,18 +68,10 @@ void AIntegrationSubsystem::Update()
 		catch (int e)
 		{
 			SI_ERROR("Error executing action: ", e);
-			return;
+			break;
 		}
 	}
-}
-
-
-void AIntegrationSubsystem::SendMessageToAll(const FString& Message, const FLinearColor& Color) const
-{
-	TArray<AFGPlayerController*> ConnectedPlayers = SML::GetConnectedPlayers(GetWorld());
-	for (AFGPlayerController* Controller : ConnectedPlayers) {
-		USMLPlayerComponent::Get(Controller)->SendChatMessage(Message, Color);
-	}
+	for (auto Item : RetryWork) WorkQueue.Enqueue(Item);
 }
 
 void FIntegrationTask::DoWork()

@@ -1,11 +1,20 @@
 #include "Utility.h"
 
+#include "SIModule.h"
+
+#include "util/Logging.h"
+#include "player/PlayerUtility.h"
+#include "player/component/SMLPlayerComponent.h"
 
 #include "FGC4Explosive.h"
 #include "FGCreatureSpawner.h"
 #include "FGInventoryLibrary.h"
 #include "FGItemPickup_Spawnable.h"
-#include "util/Logging.h"
+#include "FGCrate.h"
+
+#include "AkGameplayStatics.h"
+#include "Kismet/KismetSystemLibrary.h"
+
 
 static FORCEINLINE UClass* LoadClassFromPath(const FString& Path)
 {
@@ -51,8 +60,26 @@ bool StreamIntegration::Utility::GetFromMap(TMap<FString, FString> Map, const FS
 	return false;
 }
 
+void StreamIntegration::Utility::SendMessageToAll(class UObject* WorldContext, const FString& Message, const FLinearColor& Color)
+{
+	TArray<AFGPlayerController*> ConnectedPlayers = SML::GetConnectedPlayers(WorldContext->GetWorld());
+	for (AFGPlayerController* Controller : ConnectedPlayers) {
+		USMLPlayerComponent::Get(Controller)->SendChatMessage(Message, Color);
+	}
+}
 
-
+FString StreamIntegration::Utility::ToTitle(const FString S)
+{
+	bool bLast = true;
+	FString Out = S.Replace(TEXT("_"), TEXT(" "));
+	for (int i = 0; i < Out.Len(); i++)
+	{
+		const TCHAR c = Out[i];
+		Out[i] = bLast ? toupper(c) : tolower(c);
+		bLast = isspace(c) == 1;
+	}
+	return Out;
+}
 
 
 bool StreamIntegration::Utility::Item::GetItem(const FString ItemName, UClass **Item)
@@ -76,13 +103,14 @@ FInventoryStack StreamIntegration::Utility::Item::CreateItemStack(const int Amou
 	return UFGInventoryLibrary::MakeInventoryStack(Amount, Item);
 }
 
-void StreamIntegration::Utility::Item::DropItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, const int Spread)
+bool StreamIntegration::Utility::Item::DropItem(AActor* Actor, const FInventoryStack& Stack, const int Spread)
 {
 	FRotator OutRotation;
 	FVector OutPosition;
-	AFGItemPickup_Spawnable::FindGroundLocationInfrontOfActor(Player, 230 + FMath::RandRange(0, Spread * 100), Stack, OutPosition, OutRotation);
-	AFGItemPickup_Spawnable::CreateItemDrop(Player->GetWorld(), Stack, OutPosition, OutRotation);
-	SI_DEBUG("Dropped item");
+	AFGItemPickup_Spawnable::FindGroundLocationInfrontOfActor(Actor, 230 + FMath::RandRange(0, Spread * 100), Stack, OutPosition, OutRotation);
+	const auto ItemDrop = AFGItemPickup_Spawnable::CreateItemDrop(Actor->GetWorld(), Stack, OutPosition, OutRotation);
+	SI_DEBUG("Dropped item: ", (IsValid(ItemDrop) ? "True": "False"));
+	return IsValid(ItemDrop);
 }
 
 void StreamIntegration::Utility::Item::GiveItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, const int Spread)
@@ -94,8 +122,36 @@ void StreamIntegration::Utility::Item::GiveItem(AFGCharacterPlayer* Player, cons
 		SI_DEBUG("Gave item");
 }
 
+bool StreamIntegration::Utility::Item::SpawnCrate(AActor* Character, TArray<FInventoryStack> CrateInventory)
+{
+	TArray<AActor*> IgnoredActors{};
+	IgnoredActors.Add(Character);
 
+	FVector EndPosition = Character->GetActorLocation();
+	FVector* SpawnPosition = new FVector(EndPosition.X, EndPosition.Y, EndPosition.Z + 30);
+	FHitResult HitResult;
+	FCollisionQueryParams QueryParams;
+	QueryParams.AddIgnoredActor(Character);
+	QueryParams.MobilityType = EQueryMobilityType::Static;
 
+	if (Character->GetWorld()->LineTraceSingleByChannel(HitResult, *SpawnPosition, EndPosition, ECC_WorldStatic, QueryParams))
+	{
+		SpawnPosition->Z = HitResult.ImpactPoint.Z + 8;
+	}
+	else
+	{
+		SpawnPosition->Z = EndPosition.Z;
+	}
+
+	AFGCrate* Crate;
+	AFGItemPickup_Spawnable::SpawnInventoryCrate(Character->GetWorld(), CrateInventory, *SpawnPosition, IgnoredActors, Crate);
+	if (IsValid(Crate))
+	{
+		Crate->OnRequestReprecentMarker();
+		return true;
+	}
+	return false;
+}
 
 
 bool StreamIntegration::Utility::Actor::GetCreature(FString CreatureName, UClass** Creature)
@@ -122,25 +178,30 @@ auto StreamIntegration::Utility::Actor::SpawnCreature(AFGCharacterPlayer* Player
 				Vector.Z = Location.Z;
 
 				SI_DEBUG("Trying to spawn creature at ", *Vector.ToString());
-				FActorSpawnParameters Parmas;
-				Parmas.SpawnCollisionHandlingOverride = ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn;
+				
+				auto Scale = FVector::OneVector;
+				Scale *= FMath::RandRange(ScaleMin, ScaleMax);
+				FTransform* SpawnTransform = new FTransform(Player->GetViewRotation(), Vector, Scale);
 
-				const auto Actor = World->SpawnActor(CreatureClass, &Vector, 0, Parmas);
+				const auto Actor = UGameplayStatics::BeginDeferredActorSpawnFromClass(Player, CreatureClass, *SpawnTransform, ESpawnActorCollisionHandlingMethod::AdjustIfPossibleButAlwaysSpawn);
+				UGameplayStatics::FinishSpawningActor(Actor, *SpawnTransform);
 				if (!CreatureID.Equals(TEXT("Manta")) && Persistent)
 				{
-					SetBoolProperty(Actor, TEXT("mNeedsSpawner"), false);
+					UKismetSystemLibrary::SetBoolPropertyByName(Actor, "mNeedsSpawner", false);
 					Cast<AFGCreature>(Actor)->SetPersistent(true);
-					auto Scale = FVector::OneVector;
-					Scale *= FMath::RandRange(ScaleMin, ScaleMax);
-					Actor->SetActorScale3D(Scale);
-					
-					if (UProperty* Property = Actor->GetClass()->FindPropertyByName(TEXT("mKillOrphanHandle")))
+
+					const auto StructProperty = FindField<UStructProperty>(Actor->GetClass(), "mKillOrphanHandle");
+					if (StructProperty != NULL)
 					{
-						if (UStructProperty* StructProperty = Cast<UStructProperty>(Property))
-						{
-							const auto Handle = StructProperty->ContainerPtrToValuePtr<FTimerHandle>(Actor);
-							Actor->GetWorldTimerManager().ClearTimer(*Handle);
-						}
+						const auto Handle = StructProperty->ContainerPtrToValuePtr<FTimerHandle>(Actor);
+						Actor->GetWorldTimerManager().ClearTimer(*Handle);
+					}
+					if (CreatureID.Equals(TEXT("BabyCrab")))
+					{
+						FTimerDynamicDelegate Timer;
+						Timer.BindUFunction(Actor, "KillOrphanCrabs");
+						FTimerHandle TimerHandle = Actor->GetWorldTimerManager().K2_FindDynamicTimerHandle(Timer);
+						Actor->GetWorldTimerManager().ClearTimer(TimerHandle);
 					}
 					
 					SI_DEBUG("Set creature to persistent");
@@ -179,8 +240,8 @@ void StreamIntegration::Utility::Actor::SpawnBomb(AFGCharacterPlayer* Player, co
 
 				const auto Actor = Cast<AFGC4Explosive>(World->SpawnActor(CreatureClass, &Vector, 0, Parmas));
 
-				SetFloatProperty(Actor, TEXT("mBaseDamage"), Damage);
-				SetFloatProperty(Actor, TEXT("mDamageRadius"), DamageRadius * 100);
+				UKismetSystemLibrary::SetFloatPropertyByName(Actor, "mBaseDamage", Damage);
+				UKismetSystemLibrary::SetFloatPropertyByName(Actor, "mDamageRadius", DamageRadius * 100);
 				
 				FTimerDelegate DetonateTimer;
 				DetonateTimer.BindLambda([](AFGC4Explosive* Actor)
@@ -203,45 +264,6 @@ void StreamIntegration::Utility::Actor::SpawnBomb(AFGCharacterPlayer* Player, co
 		SI_ERROR("Could not find bomb class");
 	}
 }
-
-void StreamIntegration::Utility::SetBoolProperty(UObject* Obj, const FName Prop, const bool bValue)
-{
-	SI_DEBUG("Set prop: ", *Prop.ToString(), " to ", (bValue ? "True" : "False"));
-	
-	if (UClass* Class = Obj->GetClass())
-	{
-		if (UProperty* Property = Class->FindPropertyByName(Prop))
-		{
-			if (UBoolProperty* BoolProperty = Cast<UBoolProperty>(Property))
-			{
-				const auto BoolPtr = Property->ContainerPtrToValuePtr<bool>(Obj);
-				SI_DEBUG("Previous value of: ", *Prop.ToString(), " was ", BoolProperty->GetPropertyValue(BoolPtr));
-				BoolProperty->SetPropertyValue(BoolPtr, bValue);
-				SI_DEBUG("New value of: ", *Prop.ToString(), " is ", BoolProperty->GetPropertyValue(BoolPtr));
-			}
-		}
-	}
-}
-
-void StreamIntegration::Utility::SetFloatProperty(UObject* Obj, const FName Prop, const float Value)
-{
-	SI_DEBUG("Set prop: ", *Prop.ToString(), " to ", Value);
-
-	if (UClass* Class = Obj->GetClass())
-	{
-		if (UProperty* Property = Class->FindPropertyByName(Prop))
-		{
-			if (UFloatProperty* FloatProperty = Cast<UFloatProperty>(Property))
-			{
-				const auto FloatPtr = Property->ContainerPtrToValuePtr<float>(Obj);
-				SI_DEBUG("Previous value of: ", *Prop.ToString(), " was ", FloatProperty->GetPropertyValue(FloatPtr));
-				FloatProperty->SetPropertyValue(FloatPtr, Value);
-				SI_DEBUG("New value of: ", *Prop.ToString(), " is ", FloatProperty->GetPropertyValue(FloatPtr));
-			}
-		}
-	}
-}
-
 
 
 const TMap<FString, FString> StreamIntegration::Utility::Item::ItemMap = {

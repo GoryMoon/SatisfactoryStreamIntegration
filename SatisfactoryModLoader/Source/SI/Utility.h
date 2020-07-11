@@ -2,18 +2,15 @@
 #include "EngineMinimal.h"
 #include "FGCharacterPlayer.h"
 #include "FGInventoryComponent.h"
-#include "FGItemDescriptor.h"
-#include "SIModule.h"
 
 namespace StreamIntegration
 {
 	namespace Utility
 	{
-		extern void SetBoolProperty(UObject* Obj, FName Prop, bool bValue);
-		extern void SetFloatProperty(UObject* Obj, FName Prop, float Value);
-	
 		SI_API extern UClass* FindClass(const TCHAR* ClassName);
 		SI_API extern bool GetFromMap(TMap<FString, FString> Map, FString Name, OUT UClass** OutClass);
+		SI_API extern void SendMessageToAll(class UObject* WorldContext, const FString& Message, const FLinearColor& Color);
+		SI_API extern FString ToTitle(const FString S);
 
 		namespace Actor
 		{
@@ -28,9 +25,9 @@ namespace StreamIntegration
 		{
 			SI_API extern bool GetItem(FString ItemName, OUT UClass** Item);
 			SI_API extern FInventoryStack CreateItemStack(int Amount, FString ItemId);
-			SI_API extern void DropItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, int Spread);
+			SI_API extern bool DropItem(AActor* Actor, const FInventoryStack& Stack, int Spread);
 			SI_API extern void GiveItem(AFGCharacterPlayer* Player, const FInventoryStack& Stack, int Spread);
-			
+			SI_API extern bool SpawnCrate(AActor* Character, TArray<FInventoryStack> CrateInventory);
 			SI_API extern const TMap<FString, FString> ItemMap;
 		}
 	}

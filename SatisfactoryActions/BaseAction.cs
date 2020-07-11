@@ -14,6 +14,18 @@ namespace SatisfactoryActions
         [DefaultValue("self")]
         [JsonProperty(PropertyName = "target", DefaultValueHandling = DefaultValueHandling.Populate)]
         private string _target;
+
+        [DefaultValue(0f)]
+        [JsonProperty(PropertyName = "delay_min", DefaultValueHandling = DefaultValueHandling.Populate)]
+        private float _delayMin;
+        
+        [DefaultValue(0f)]
+        [JsonProperty(PropertyName = "delay_max", DefaultValueHandling = DefaultValueHandling.Populate)]
+        private float _delayMax;
+        
+        [DefaultValue(false)]
+        [JsonProperty(PropertyName = "silent", DefaultValueHandling = DefaultValueHandling.Populate)]
+        private string _silent;
         
         public override string Execute(string username, string from, Dictionary<string, object> parameters)
         {

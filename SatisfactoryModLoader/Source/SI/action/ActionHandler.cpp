@@ -1,29 +1,61 @@
 #include "ActionHandler.h"
 
-#include "FGAISystem.h"
-#include "FGCharacterMovementComponent.h"
-#include "FGHealthComponent.h"
-#include "FGWheeledVehicle.h"
-#include "WheeledVehicleMovementComponent.h"
 #include "Utility.h"
 #include "CharacterUtility.h"
-#include "FGCrate.h"
-#include "FGInventoryLibrary.h"
-#include "FGItemPickup_Spawnable.h"
+
 #include "player/PlayerUtility.h"
 
-void AActionHandler::HandleAction(FString Type, TSharedPtr<FJsonObject> JsonObject)
+#include "FGAISystem.h"
+#include "FGCharacterMovementComponent.h"
+#include "FGCircuitSubsystem.h"
+#include "FGHealthComponent.h"
+#include "FGWheeledVehicle.h"
+
+#include "WheeledVehicleMovementComponent.h"
+
+bool AActionHandler::HandleAction(FString From, FString Type, TSharedPtr<FJsonObject> JsonObject)
 {
-	const auto Method = Actions.Find(Type);
+	const FActionDelegate* Method = Actions.Find(Type);
 	if (Method != nullptr)
 	{
-		if (!Method->ExecuteIfBound(JsonObject))
-			SI_ERROR("Something went wrong executing action");
+		const float DelayMin = JsonObject->GetNumberField("delay_min");
+		const float DelayMax = JsonObject->GetNumberField("delay_max");
+		float Delay = DelayMin;
+		if (DelayMin < DelayMax)
+		{
+			Delay = FMath::RandRange(DelayMin, DelayMax);
+		}
+		
+		FTimerDelegate Delegate;
+		Delegate.BindLambda([this](TSharedPtr<FJsonObject> Json, const FActionDelegate* Method, FString From, FString Type)
+			{
+				if (!Method->ExecuteIfBound(Json))
+				{
+					SI_ERROR("Something went wrong executing action");
+					return;
+				}
+				
+				SI_INFO("Ran Action: ", *Type);
+				const bool Silent = Json->GetBoolField("silent");
+				if (Silent) return;
+			
+				StreamIntegration::Utility::SendMessageToAll(this, From + FString(" ran action ") + StreamIntegration::Utility::ToTitle(Type), FLinearColor::Green);
+			}, JsonObject, Method, From, Type);
+
+		if (Delay > 0)
+		{
+			FTimerHandle TimerHandle;
+			GetWorld()->GetTimerManager().SetTimer(TimerHandle, Delegate, Delay, false, Delay);
+		}
 		else
-			SI_INFO("Ran Action: ", *Type);
+		{
+			return Delegate.ExecuteIfBound();
+		}
+		return true;
 	}
-	else
-		SI_WARN("Action not recognised ignoring");
+	
+	SI_WARN("Action not recognised ignoring");
+	return false;
 }
 
 
@@ -41,14 +73,11 @@ AFGPlayerController* AActionHandler::GetTarget(const TSharedPtr<FJsonObject> Jso
 		auto Players = SML::GetConnectedPlayers(GetWorld());
 		return Players[FMath::RandRange(0, Players.Num() - 1)];
 	}
-	else if (JsonTarget == TEXT("self"))
+	if (JsonTarget == TEXT("self"))
 	{
 		return SML::GetPlayerByName(GetWorld(), StreamIntegration::GetConfig().Username);
 	}
-	else
-	{
-		return SML::GetPlayerByName(GetWorld(), JsonTarget);
-	}
+	return SML::GetPlayerByName(GetWorld(), JsonTarget);
 }
 
 void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObject) const
@@ -59,14 +88,23 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
 		if (IsValid(Character))
 		{
+			AActor* Actor = Character;
+			if (Character->IsDrivingVehicle())
+			{
+				const auto Vehicle = Cast<AFGWheeledVehicle>(Character->GetDrivenVehicle());
+				if (!IsValid(Vehicle))
+				{
+					return;
+				}
+				Actor = Vehicle;
+			}
 			const auto Spread = JsonObject->GetIntegerField("spread");
-
+			
 			TInlineComponentArray<UFGInventoryComponent*, 24> InventoryComponents(Character);
 			TArray<FInventoryStack> Stacks{};
 			for (auto InventoryComponent : InventoryComponents)
 			{
 				InventoryComponent->GetInventoryStacks(Stacks);
-				InventoryComponent->Empty();
 			}
 	
 			if (Stacks.Num() > 0)
@@ -76,33 +114,33 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 				
 				TArray<FInventoryStack> CrateInventory{};
 				CrateInventory.Add(CrateStack);
-				TArray<AActor*> IgnoredActors{};
-				IgnoredActors.Add(Character);
-
-				FVector EndPosition = Character->GetActorLocation();
-				FVector* SpawnPosition = new FVector(EndPosition.X, EndPosition.Y, EndPosition.Z + 30);
-				FHitResult HitResult;
-				FCollisionQueryParams QueryParams;
-				QueryParams.AddIgnoredActor(Character);
-				QueryParams.MobilityType = EQueryMobilityType::Static;
-
-				if (GetWorld()->LineTraceSingleByChannel(HitResult, *SpawnPosition, EndPosition, ECC_WorldStatic, QueryParams))
+				if (!StreamIntegration::Utility::Item::SpawnCrate(Actor, CrateInventory))
 				{
-					SpawnPosition->Z = HitResult.ImpactPoint.Z + 8;
+					return;
 				}
-				else
+			}
+
+			for (int i = 0; i < Stacks.Num(); ++i)
+			{
+				auto Stack = Stacks[i];
+				if (!StreamIntegration::Utility::Item::DropItem(Actor, Stack, Spread))
 				{
-					SpawnPosition->Z = EndPosition.Z;
+					TArray<FInventoryStack> CrateInventory{};
+					for (int j = i; j < Stacks.Num(); ++j)
+					{
+						CrateInventory.Add(Stacks[j]);
+					}
+					if (!StreamIntegration::Utility::Item::SpawnCrate(Actor, CrateInventory))
+					{
+						return;
+					}
+					break;
 				}
-				
-				AFGCrate* Crate;
-				AFGItemPickup_Spawnable::SpawnInventoryCrate(GetWorld(), CrateInventory, *SpawnPosition, IgnoredActors, Crate);
-				Crate->OnRequestReprecentMarker();
 			}
 			
-			for (auto Stack : Stacks)
+			for (auto InventoryComponent : InventoryComponents)
 			{
-				StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
+				InventoryComponent->Empty();
 			}
 		}
 	}
@@ -136,7 +174,7 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 						const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ItemString);
 						if (Stack.Item.IsValid())
 						{
-							if (bDrop)
+							if (bDrop && !Character->IsDrivingVehicle())
 								StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
 							else
 								StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
@@ -148,13 +186,14 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 					}
 				}
 			}
-			else {
+			else 
+			{
 				try
 				{
 					const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ID);
 					if (Stack.Item.IsValid())
 					{
-						if (bDrop)
+						if (bDrop && !Character->IsDrivingVehicle())
 							StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
 						else
 							StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
@@ -233,21 +272,21 @@ void AActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject)
 			}
 			else
 			{
+
 				auto MovementComponent = Character->GetFGMovementComponent();
 				MovementComponent->SetGeneralVelocity(MoveVector + MovementComponent->GetVelocity());
 				Character->Jump();
-				
+
 				const UCurveFloat* OldCurve = nullptr;
-				if (UProperty* Property = Character->GetClass()->FindPropertyByName(TEXT("mFallDamageCurveOverride")))
+				
+				UObjectProperty* ObjProperty = FindField<UObjectProperty>(Character->GetClass(), "mFallDamageCurveOverride");
+				if (ObjProperty != NULL)
 				{
-					if (UObjectProperty* ObjProperty = Cast<UObjectProperty>(Property))
+					OldCurve = ObjProperty->ContainerPtrToValuePtr<UCurveFloat>(Character);
+					if (!IsValid(OldCurve) || (OldCurve->FloatCurve.Keys.Num() != 0 && !OldCurve->FloatCurve.Keys.IsValidIndex(0)))
 					{
-						OldCurve = ObjProperty->ContainerPtrToValuePtr<UCurveFloat>(Character);
-						if (!IsValid(OldCurve) || (OldCurve->FloatCurve.Keys.Num() != 0 && !OldCurve->FloatCurve.Keys.IsValidIndex(0)))
-						{
-							SI_DEBUG("Old curve no valid, using null");
-							OldCurve = nullptr;
-						}
+						SI_DEBUG("Old curve no valid, using null");
+						OldCurve = nullptr;
 					}
 				}
 				Character->SetFallDamageOverride(StreamIntegration::GetFallDamageOverride());
@@ -326,9 +365,8 @@ void AActionHandler::HandleEmote(TSharedPtr<FJsonObject> JsonObject) const
 		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
 		if (IsValid(Character))
 		{
-			const FString Style = JsonObject->GetStringField("style");
-			if (Character->IsAliveAndWell() && !Player->NeedRespawn()) {
-
+			if (Character->IsAliveAndWell() && !Player->NeedRespawn() && !Character->IsDrivingVehicle()) {
+				const FString Style = JsonObject->GetStringField("style");
 				if (Style == TEXT("Clap"))
 				{
 					StreamIntegration::Utility::Character::PlayClapEmote(Character);
@@ -343,13 +381,32 @@ void AActionHandler::HandleEmote(TSharedPtr<FJsonObject> JsonObject) const
 				}
 			}
 		}
-		
 	}
 	else
 	{
 		SI_ERROR("Player was NULL, config is probably incorrect");
 	}
-	
+}
+
+void AActionHandler::HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const
+{
+	const auto Player = GetTarget(JsonObject);
+	if (IsValid(Player))
+	{
+		const float Chance = JsonObject->GetNumberField("chance");
+		
+		const auto GameState = Cast<AFGGameState>(UGameplayStatics::GetGameState(this));
+		if (IsValid(GameState) && FMath::FRandRange(0, 100) < Chance)
+		{
+			auto CircuitSubsystem = AFGCircuitSubsystem::Get(GetWorld());
+			UFunction* Func = CircuitSubsystem->GetClass()->FindFunctionByName(FName("PowerCircuit_OnFuseSet"));
+			CircuitSubsystem->ProcessEvent(Func, nullptr);
+		}
+	}
+	else
+	{
+		SI_ERROR("Player was NULL, config is probably incorrect");
+	}
 }
 
 
