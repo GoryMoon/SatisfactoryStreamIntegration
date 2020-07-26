@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using Newtonsoft.Json;
 
 namespace SatisfactoryActions
@@ -35,11 +36,11 @@ namespace SatisfactoryActions
         protected override DropBomb Process(DropBomb action, string username, string from, Dictionary<string, object> parameters)
         {
             action._amount = StringToInt(_amount, 1, parameters).ToString();
-            action._time = StringToInt(_time, 0, parameters).ToString();
-            action._height = StringToInt(_height, 0, parameters).ToString();
-            action._radius = StringToInt(_radius, 0, parameters).ToString();
-            action._damage = StringToInt(_damage, 0, parameters).ToString();
-            action._damageRadius = StringToInt(_damageRadius, 0, parameters).ToString();
+            action._time = StringToFloat(_time, 0, parameters).ToString(CultureInfo.InvariantCulture);
+            action._height = StringToFloat(_height, 0, parameters).ToString(CultureInfo.InvariantCulture);
+            action._radius = StringToFloat(_radius, 0, parameters).ToString(CultureInfo.InvariantCulture);
+            action._damage = StringToFloat(_damage, 0, parameters).ToString(CultureInfo.InvariantCulture);
+            action._damageRadius = StringToFloat(_damageRadius, 0, parameters).ToString(CultureInfo.InvariantCulture);
             return base.Process(action, username, from, parameters);
         }
     }
