@@ -31,6 +31,14 @@ namespace SatisfactoryActions
         [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "scale_max")]
         private string _scaleMax;
         
+        [DefaultValue(0)]
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "despawn_time")]
+        private float _despawnTime;
+        
+        [DefaultValue(true)]
+        [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "kill_on_despawn")]
+        private bool _killOnDespawn;
+        
         protected override SpawnMob Process(SpawnMob action, string username, string from, Dictionary<string, object> parameters)
         {
             action._amount = StringToInt(_amount, 1, parameters).ToString();

@@ -4,12 +4,13 @@
 #include <fstream>
 
 #include "mod/BlueprintLibrary.h"
+#include "util/Logging.h"
 
-void parseConfig(const TSharedRef<FJsonObject>& json, StreamIntegration::SIConfig& config) {
+void ParseConfig(const TSharedRef<FJsonObject>& json, StreamIntegration::SIConfig& config) {
 	config.Username = json->GetStringField(TEXT("username"));
 }
 
-TSharedRef<FJsonObject> createConfigDefaults() {
+TSharedRef<FJsonObject> CreateConfigDefaults() {
 	TSharedRef<FJsonObject> ref = MakeShareable(new FJsonObject());
 	ref->SetStringField(TEXT("username"), "");
 	return ref;
@@ -21,15 +22,10 @@ void FSIModule::StartupModule()
 {
 #if !WITH_EDITOR
 	StreamIntegration::Running = true;
-	const auto Json = SML::readModConfig("SI", createConfigDefaults());
+	const auto Json = SML::ReadModConfig("SI", CreateConfigDefaults());
 	StreamIntegration::CurrentConfig = new StreamIntegration::SIConfig;
-	parseConfig(Json, *StreamIntegration::CurrentConfig);
+	ParseConfig(Json, *StreamIntegration::CurrentConfig);
 #endif
-
-	/*SUBSCRIBE_METHOD("?InitGameState@AFGGameMode@@UEAAXXZ", AFGGameMode::InitGameState, [](auto& scope, AFGGameMode* gameMode) {
-		AExampleActor* actor = gameMode->GetWorld()->SpawnActor<AExampleActor>(FVector::ZeroVector, FRotator::ZeroRotator);
-		actor->DoStuff();
-	});*/
 }
 
 void FSIModule::ShutdownModule()
@@ -57,6 +53,16 @@ namespace StreamIntegration
 			NoFallDamage = Cast<UCurveFloat>(FStringAssetReference("/Game/SI/NoFallDamage.NoFallDamage").TryLoad());
 		}
 		return NoFallDamage;
+	}
+
+	void SetTrigger(const bool b)
+	{
+		TriggerFuse = b;
+	}
+
+	bool GetTrigger()
+	{
+		return TriggerFuse;
 	}
 }
 

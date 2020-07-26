@@ -6,17 +6,12 @@ Binaries/
 Plugins/
 Config/
 
-Content/ProceduralNaturePack/
-Content/ExampleMod/
-Content/FactoryGame/
-Content/SML/
-Content/Utils/
-Content/Widget_ColorPicker_Preview.uasset
+Content/*
+!Content/SI/
 FactoryGame.uproject
 
-Source/ExampleMod/
-Source/FactoryGame*
-Source/SML/
+Source/*
+!Source/SI
 
 # Compiled Object files
 *.slo

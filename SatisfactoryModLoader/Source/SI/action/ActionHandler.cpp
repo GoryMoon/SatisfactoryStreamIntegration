@@ -3,7 +3,7 @@
 #include "Utility.h"
 #include "CharacterUtility.h"
 
-#include "player/PlayerUtility.h"
+#include "player/PlayerControllerHelper.h"
 
 #include "FGAISystem.h"
 #include "FGCharacterMovementComponent.h"
@@ -70,14 +70,14 @@ AFGPlayerController* AActionHandler::GetTarget(const TSharedPtr<FJsonObject> Jso
 	
 	if (JsonTarget == TEXT("random"))
 	{
-		auto Players = SML::GetConnectedPlayers(GetWorld());
+		auto Players = FPlayerControllerHelper::GetConnectedPlayers(GetWorld());
 		return Players[FMath::RandRange(0, Players.Num() - 1)];
 	}
 	if (JsonTarget == TEXT("self"))
 	{
-		return SML::GetPlayerByName(GetWorld(), StreamIntegration::GetConfig().Username);
+		return FPlayerControllerHelper::GetPlayerByName(GetWorld(), StreamIntegration::GetConfig().Username);
 	}
-	return SML::GetPlayerByName(GetWorld(), JsonTarget);
+	return FPlayerControllerHelper::GetPlayerByName(GetWorld(), JsonTarget);
 }
 
 void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObject) const
@@ -163,46 +163,24 @@ void AActionHandler::HandleGiveItem(TSharedPtr<FJsonObject> JsonObject) const
 			const bool bDrop = JsonObject->GetBoolField("drop");
 			const auto Spread = JsonObject->GetIntegerField("spread");
 
-			if (ID == "ALL")
+			try
 			{
-				TArray<FString> Items;
-				StreamIntegration::Utility::Item::ItemMap.GetKeys(Items);
-				for (const auto ItemString : Items)
+				const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ID);
+				if (Stack.HasItems())
 				{
-					try
-					{
-						const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ItemString);
-						if (Stack.Item.IsValid())
-						{
-							if (bDrop && !Character->IsDrivingVehicle())
-								StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
-							else
-								StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
-						}
-					}
-					catch (int e)
-					{
-						SI_ERROR("ERROR creating item: ", e);
-					}
+					if (bDrop && !Character->IsDrivingVehicle())
+						StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
+					else
+						StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
+				}
+				else
+				{
+					SI_WARN("Invalid item: ", *ID);
 				}
 			}
-			else 
+			catch (int e)
 			{
-				try
-				{
-					const auto Stack = StreamIntegration::Utility::Item::CreateItemStack(Amount, ID);
-					if (Stack.Item.IsValid())
-					{
-						if (bDrop && !Character->IsDrivingVehicle())
-							StreamIntegration::Utility::Item::DropItem(Character, Stack, Spread);
-						else
-							StreamIntegration::Utility::Item::GiveItem(Character, Stack, Spread);
-					}
-				}
-				catch (int e)
-				{
-					SI_ERROR("ERROR creating item: ", e);
-				}
+				SI_ERROR("ERROR creating item: ", e);
 			}
 		}
 	}
@@ -323,8 +301,10 @@ void AActionHandler::HandleSpawnMob(TSharedPtr<FJsonObject> JsonObject) const
 			const bool Persistent = JsonObject->GetBoolField("persistent");
 			const float ScaleMin = JsonObject->GetNumberField("scale_min");
 			const float ScaleMax = JsonObject->GetNumberField("scale_max");
+			const float DespawnTime = JsonObject->GetNumberField("despawn_time");
+			const bool Kill = JsonObject->GetBoolField("kill_on_despawn");
 
-			StreamIntegration::Utility::Actor::SpawnCreature(Character, ID, Amount, Radius, Persistent, ScaleMin, ScaleMax);
+			StreamIntegration::Utility::Actor::SpawnCreature(Character, ID, Amount, Radius, Persistent, ScaleMin, ScaleMax, DespawnTime, Kill);
 		}
 	}
 	else
@@ -396,11 +376,19 @@ void AActionHandler::HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const
 		const float Chance = JsonObject->GetNumberField("chance");
 		
 		const auto GameState = Cast<AFGGameState>(UGameplayStatics::GetGameState(this));
-		if (IsValid(GameState) && FMath::FRandRange(0, 100) < Chance)
+		if (IsValid(GameState))
 		{
-			auto CircuitSubsystem = AFGCircuitSubsystem::Get(GetWorld());
-			UFunction* Func = CircuitSubsystem->GetClass()->FindFunctionByName(FName("PowerCircuit_OnFuseSet"));
-			CircuitSubsystem->ProcessEvent(Func, nullptr);
+			if (FMath::FRandRange(0, 100) <= Chance)
+			{
+				StreamIntegration::SetTrigger(true);
+				SI_DEBUG("Trigering fuse!");
+			}
+			else
+			{
+				auto CircuitSubsystem = GameState->GetCircuitSubsystem();
+				UFunction* Func = CircuitSubsystem->GetClass()->FindFunctionByName(FName("PowerCircuit_OnFuseSet"));
+				CircuitSubsystem->ProcessEvent(Func, nullptr);
+			}
 		}
 	}
 	else
@@ -408,5 +396,4 @@ void AActionHandler::HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const
 		SI_ERROR("Player was NULL, config is probably incorrect");
 	}
 }
-
 

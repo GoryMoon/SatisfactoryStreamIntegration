@@ -1,5 +1,6 @@
 #pragma once
 
+#include "ThreadSafeBool.h"
 #include "Curves/CurveFloat.h"
 #include "Modules/ModuleManager.h"
 
@@ -18,6 +19,7 @@ namespace StreamIntegration
 	
 	static SIConfig* CurrentConfig;
 	static UCurveFloat* NoFallDamage = nullptr;
+	static FThreadSafeBool TriggerFuse = false;
 
 	SI_API extern const SIConfig& GetConfig();
 
@@ -26,6 +28,10 @@ namespace StreamIntegration
 	SI_API extern bool IsRunning();
 
 	SI_API extern UCurveFloat* GetFallDamageOverride();
+
+	SI_API extern void SetTrigger(bool b);
+	
+	SI_API extern bool GetTrigger();
 }
 
 class FSIModule : public FDefaultGameModuleImpl {

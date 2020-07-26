@@ -1,7 +1,6 @@
 #include "IntegrationSubsystem.h"
 
 #include "action/ActionHandler.h"
-#include "player/PlayerUtility.h"
 
 void AIntegrationSubsystem::BeginPlay()
 {
@@ -49,7 +48,7 @@ void AIntegrationSubsystem::Update()
 			}
 			else
 			{
-				TSharedPtr<FJsonObject> JsonObject = SML::parseJsonLenient(Work.Data);
+				TSharedPtr<FJsonObject> JsonObject = SML::ParseJsonLenient(Work.Data);
 
 				if (JsonObject.IsValid())
 				{
