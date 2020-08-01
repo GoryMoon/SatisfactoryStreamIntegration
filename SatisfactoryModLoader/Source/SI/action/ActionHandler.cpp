@@ -374,7 +374,6 @@ void AActionHandler::HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const
 	if (IsValid(Player))
 	{
 		const float Chance = JsonObject->GetNumberField("chance");
-		
 		const auto GameState = Cast<AFGGameState>(UGameplayStatics::GetGameState(this));
 		if (IsValid(GameState))
 		{
@@ -397,3 +396,36 @@ void AActionHandler::HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const
 	}
 }
 
+void AActionHandler::HandleLowGravity(TSharedPtr<FJsonObject> JsonObject)
+{
+	const auto Player = GetTarget(JsonObject);
+	if (IsValid(Player))
+	{
+		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
+		if (IsValid(Character))
+		{
+			const float Amount = FMath::Max(FMath::Min(static_cast<float>(JsonObject->GetNumberField("amount")), 1.0f), 0.0f);
+			const float Time = JsonObject->GetNumberField("reset_time");
+
+			if (!Character->IsDrivingVehicle())
+			{
+				const auto MovementComponent = Character->GetFGMovementComponent();
+				MovementComponent->GravityScale = Amount;
+				
+				PlayerGravityDelegate.BindLambda([](UFGCharacterMovementComponent* MovementComponent)
+					{
+						if (IsValid(MovementComponent) && !MovementComponent->IsUnreachable())
+						{
+							MovementComponent->GravityScale = 1;
+						}
+					}, MovementComponent);
+
+				Character->GetWorldTimerManager().SetTimer(PlayerGravityTimerHandle, PlayerGravityDelegate, Time, false);
+			}
+		}
+	}
+	else
+	{
+		SI_ERROR("Player was NULL, config is probably incorrect");
+	}
+}

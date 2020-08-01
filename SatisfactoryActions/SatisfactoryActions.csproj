@@ -50,6 +50,7 @@
         <Compile Include="GiveItem.cs" />
         <Compile Include="HealPlayer.cs" />
         <Compile Include="InventoryBomb.cs" />
+        <Compile Include="LowGravity.cs" />
         <Compile Include="MovePlayer.cs" />
         <Compile Include="Properties\AssemblyInfo.cs" />
         <Compile Include="SpawnMob.cs" />
