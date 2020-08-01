@@ -269,7 +269,7 @@ void AActionHandler::HandleMovePlayer(TSharedPtr<FJsonObject> JsonObject)
 				}
 				Character->SetFallDamageOverride(StreamIntegration::GetFallDamageOverride());
 
-				MovePlayerDelegate.BindUFunction(this, FName("ResetFallDamage"), Character, OldCurve);
+				MovePlayerDelegate.BindUFunction(this, FName(TEXT("ResetFallDamage")), Character, OldCurve);
 				GetWorldTimerManager().SetTimer(MovePlayerTimerHandle, MovePlayerDelegate, NoFallDamage, false);
 			}
 		}
@@ -396,6 +396,14 @@ void AActionHandler::HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const
 	}
 }
 
+void AActionHandler::ResetLowGravity(UFGCharacterMovementComponent* MovementComponent)
+{
+	if (IsValid(MovementComponent) && !MovementComponent->IsUnreachable())
+	{
+		MovementComponent->GravityScale = 1;
+	}
+}
+
 void AActionHandler::HandleLowGravity(TSharedPtr<FJsonObject> JsonObject)
 {
 	const auto Player = GetTarget(JsonObject);
@@ -404,24 +412,15 @@ void AActionHandler::HandleLowGravity(TSharedPtr<FJsonObject> JsonObject)
 		const auto Character = StreamIntegration::Utility::Character::GetPlayerCharacter(Player);
 		if (IsValid(Character))
 		{
-			const float Amount = FMath::Max(FMath::Min(static_cast<float>(JsonObject->GetNumberField("amount")), 1.0f), 0.0f);
+			const float Amount = FMath::Max(FMath::Min(static_cast<float>(JsonObject->GetNumberField("amount")), 1.0f), -1.0f);
 			const float Time = JsonObject->GetNumberField("reset_time");
 
-			if (!Character->IsDrivingVehicle())
-			{
-				const auto MovementComponent = Character->GetFGMovementComponent();
-				MovementComponent->GravityScale = Amount;
-				
-				PlayerGravityDelegate.BindLambda([](UFGCharacterMovementComponent* MovementComponent)
-					{
-						if (IsValid(MovementComponent) && !MovementComponent->IsUnreachable())
-						{
-							MovementComponent->GravityScale = 1;
-						}
-					}, MovementComponent);
+			const auto MovementComponent = Character->GetFGMovementComponent();
+			MovementComponent->GravityScale = Amount;
 
-				Character->GetWorldTimerManager().SetTimer(PlayerGravityTimerHandle, PlayerGravityDelegate, Time, false);
-			}
+			Character->GetWorldTimerManager().ClearTimer(PlayerGravityTimerHandle);
+			PlayerGravityDelegate.BindUFunction(this, FName(TEXT("ResetLowGravity")), MovementComponent);
+			Character->GetWorldTimerManager().SetTimer(PlayerGravityTimerHandle, PlayerGravityDelegate, Time, false);
 		}
 	}
 	else

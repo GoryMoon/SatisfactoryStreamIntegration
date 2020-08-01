@@ -36,6 +36,8 @@ public:
 
 	UFUNCTION()
 	void ResetFallDamage(AFGCharacterPlayer* Player, UCurveFloat* Curve);
+	UFUNCTION()
+	void ResetLowGravity(UFGCharacterMovementComponent* MovementComponent);
 	
 protected:	
 	TMap<FString, const FActionDelegate> Actions;
