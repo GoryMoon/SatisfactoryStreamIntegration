@@ -32,25 +32,25 @@ namespace SatisfactoryActions
 
         private static void ProcessColor(Color color, Dictionary<string, object> parameters)
         {
-            color.Red = StringToInt(color.Red, -1, parameters).ToString();
-            color.Green = StringToInt(color.Green, -1, parameters).ToString();
-            color.Blue = StringToInt(color.Blue, -1, parameters).ToString();
+            color.Red = StringToInt(color.Red, -2, parameters).ToString();
+            color.Green = StringToInt(color.Green, -2, parameters).ToString();
+            color.Blue = StringToInt(color.Blue, -2, parameters).ToString();
         }
         
         [Serializable]
         public class Color
         {
-            [DefaultValue("-1")]
+            [DefaultValue("-2")]
             [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "red")]
-            public string Red = "-1";
+            public string Red = "-2";
         
-            [DefaultValue("-1")]
+            [DefaultValue("-2")]
             [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "green")]
-            public string Green = "-1";
+            public string Green = "-2";
         
-            [DefaultValue("-1")]
+            [DefaultValue("-2")]
             [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "blue")]
-            public string Blue = "-1";
+            public string Blue = "-2";
         }
     }
 }

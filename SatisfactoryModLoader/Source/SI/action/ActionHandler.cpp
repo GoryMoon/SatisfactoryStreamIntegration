@@ -458,7 +458,11 @@ static FLinearColor UpdateColor(const TArray<TSharedPtr<FJsonValue>> Data, FLine
 	const auto G = ColorData->GetIntegerField("green");
 	const auto B = ColorData->GetIntegerField("blue");
 	
-	return *new FLinearColor(R >= 0 ? R: Color.R, G >= 0 ? G : Color.G, B >= 0 ? B : Color.B);
+	return *new FLinearColor(
+		R == -1 ? Color.R: R == -2 ? FMath::RandHelper(255): R,
+		G == -1 ? Color.G: G == -2 ? FMath::RandHelper(255): G,
+		B == -1 ? Color.B: B == -2 ? FMath::RandHelper(255): B
+	);
 }
 
 void AActionHandler::HandleColorChange(TSharedPtr<FJsonObject> JsonObject) const
