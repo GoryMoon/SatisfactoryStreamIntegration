@@ -45,6 +45,7 @@
     </ItemGroup>
     <ItemGroup>
         <Compile Include="BaseAction.cs" />
+        <Compile Include="ColorChange.cs" />
         <Compile Include="DropBomb.cs" />
         <Compile Include="Emote.cs" />
         <Compile Include="GiveItem.cs" />

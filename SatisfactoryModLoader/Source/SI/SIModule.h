@@ -3,6 +3,7 @@
 #include "ThreadSafeBool.h"
 #include "Curves/CurveFloat.h"
 #include "Modules/ModuleManager.h"
+#include "SIInitMod.h"
 
 
 #define SI_INFO(msg, ...) SML::Logging::info(TEXT("[SI] " msg), __VA_ARGS__)
@@ -20,7 +21,8 @@ namespace StreamIntegration
 	static SIConfig* CurrentConfig;
 	static UCurveFloat* NoFallDamage = nullptr;
 	static FThreadSafeBool TriggerFuse = false;
-
+	static ASIInitMod* ModActor = nullptr;
+	
 	SI_API extern const SIConfig& GetConfig();
 
 	static bool Running;
@@ -32,6 +34,9 @@ namespace StreamIntegration
 	SI_API extern void SetTrigger(bool b);
 	
 	SI_API extern bool GetTrigger();
+
+	SI_API extern ASIInitMod* SetModActor(AActor* actor);
+	SI_API extern ASIInitMod* GetModActor();
 }
 
 class FSIModule : public FDefaultGameModuleImpl {

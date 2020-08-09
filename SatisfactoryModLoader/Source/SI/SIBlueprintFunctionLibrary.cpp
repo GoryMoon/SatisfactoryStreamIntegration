@@ -1,5 +1,5 @@
 #include "SIBlueprintFunctionLibrary.h"
-#include "SIModule.h"
+
 
 bool USIBlueprintFunctionLibrary::ShouldTriggerFuse()
 {
@@ -10,3 +10,4 @@ void USIBlueprintFunctionLibrary::ResetTriggerFuse()
 {
 	StreamIntegration::SetTrigger(false);
 }
+

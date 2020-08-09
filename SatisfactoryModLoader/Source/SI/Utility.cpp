@@ -227,7 +227,7 @@ auto StreamIntegration::Utility::Actor::SpawnCreature(AFGCharacterPlayer* Player
 					FTimerDelegate DespawnDelegate;
 					DespawnDelegate.BindLambda([](AActor* Creature, bool Kill)
 						{
-							if (IsValid(Creature) && !Creature->IsUnreachable())
+							if (IsValid(Creature) && !Creature->IsUnreachable() && Creature->IsValidLowLevel())
 							{
 								auto FGCreature = Cast<AFGCreature>(Creature);
 								if (Kill && IsValid(FGCreature) && !FGCreature->IsUnreachable())

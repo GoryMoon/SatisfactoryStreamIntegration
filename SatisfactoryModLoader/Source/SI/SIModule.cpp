@@ -1,10 +1,12 @@
 #include "SIModule.h"
-#include "../SML/mod/hooking.h"
 #include "FGGameMode.h"
+#include "FGGameUI.h"
 #include <fstream>
 
 #include "mod/BlueprintLibrary.h"
 #include "util/Logging.h"
+#include "SatisfactoryModLoader.h"
+#include "mod/BPHookHelper.h"
 
 void ParseConfig(const TSharedRef<FJsonObject>& json, StreamIntegration::SIConfig& config) {
 	config.Username = json->GetStringField(TEXT("username"));
@@ -16,12 +18,14 @@ TSharedRef<FJsonObject> CreateConfigDefaults() {
 	return ref;
 }
 
-
+extern void RegisterGravityNotification();
 
 void FSIModule::StartupModule()
 {
 #if !WITH_EDITOR
 	StreamIntegration::Running = true;
+	RegisterGravityNotification();
+	
 	const auto Json = SML::ReadModConfig("SI", CreateConfigDefaults());
 	StreamIntegration::CurrentConfig = new StreamIntegration::SIConfig;
 	ParseConfig(Json, *StreamIntegration::CurrentConfig);
@@ -63,6 +67,17 @@ namespace StreamIntegration
 	bool GetTrigger()
 	{
 		return TriggerFuse;
+	}
+
+	ASIInitMod* SetModActor(AActor* Actor)
+	{
+		ModActor = Cast<ASIInitMod>(Actor);
+		return ModActor;
+	}
+
+	ASIInitMod* GetModActor()
+	{
+		return ModActor;
 	}
 }
 

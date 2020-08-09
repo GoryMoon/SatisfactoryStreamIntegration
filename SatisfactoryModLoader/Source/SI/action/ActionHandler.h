@@ -30,6 +30,7 @@ public:
 		Actions.Add(TEXT("emote"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleEmote));
 		Actions.Add(TEXT("trigger_fuse"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleTriggerFuse));
 		Actions.Add(TEXT("low_gravity"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleLowGravity));
+		Actions.Add(TEXT("color_change"), FActionDelegate::CreateUObject(this, &AActionHandler::HandleColorChange));
 	}
 
 	bool HandleAction(FString From, FString Type, TSharedPtr<FJsonObject> JsonObject);
@@ -53,6 +54,7 @@ protected:
 	void HandleEmote(TSharedPtr<FJsonObject> JsonObject) const;
 	void HandleTriggerFuse(TSharedPtr<FJsonObject> JsonObject) const;
 	void HandleLowGravity(TSharedPtr<FJsonObject> JsonObject);
+	void HandleColorChange(TSharedPtr<FJsonObject> JsonObject) const;
 
 	FTimerHandle MovePlayerTimerHandle;
 	FTimerDelegate MovePlayerDelegate;

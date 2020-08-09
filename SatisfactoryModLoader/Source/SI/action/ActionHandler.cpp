@@ -9,6 +9,7 @@
 #include "FGCharacterMovementComponent.h"
 #include "FGCircuitSubsystem.h"
 #include "FGHealthComponent.h"
+#include "FGInventoryComponentEquipment.h"
 #include "FGWheeledVehicle.h"
 
 #include "WheeledVehicleMovementComponent.h"
@@ -99,11 +100,16 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 				Actor = Vehicle;
 			}
 			const auto Spread = JsonObject->GetIntegerField("spread");
+			const auto DropEquipment = JsonObject->GetBoolField("drop_equipment");
 			
 			TInlineComponentArray<UFGInventoryComponent*, 24> InventoryComponents(Character);
 			TArray<FInventoryStack> Stacks{};
 			for (auto InventoryComponent : InventoryComponents)
 			{
+				if (!DropEquipment && InventoryComponent->IsA<UFGInventoryComponentEquipment>())
+				{
+					continue;
+				}
 				InventoryComponent->GetInventoryStacks(Stacks);
 			}
 	
@@ -140,6 +146,10 @@ void AActionHandler::HandleInventoryBomb(const TSharedPtr<FJsonObject> JsonObjec
 			
 			for (auto InventoryComponent : InventoryComponents)
 			{
+				if (!DropEquipment && InventoryComponent->IsA<UFGInventoryComponentEquipment>())
+				{
+					continue;
+				}
 				InventoryComponent->Empty();
 			}
 		}
@@ -401,6 +411,11 @@ void AActionHandler::ResetLowGravity(UFGCharacterMovementComponent* MovementComp
 	if (IsValid(MovementComponent) && !MovementComponent->IsUnreachable())
 	{
 		MovementComponent->GravityScale = 1;
+		const auto ModActor = StreamIntegration::GetModActor();
+		if (ModActor->IsValidLowLevel())
+		{
+			ModActor->mOnGravityResetFinished.Broadcast();
+		}
 	}
 }
 
@@ -421,6 +436,50 @@ void AActionHandler::HandleLowGravity(TSharedPtr<FJsonObject> JsonObject)
 			Character->GetWorldTimerManager().ClearTimer(PlayerGravityTimerHandle);
 			PlayerGravityDelegate.BindUFunction(this, FName(TEXT("ResetLowGravity")), MovementComponent);
 			Character->GetWorldTimerManager().SetTimer(PlayerGravityTimerHandle, PlayerGravityDelegate, Time, false);
+			
+			const auto ModActor = StreamIntegration::GetModActor();
+			if (ModActor->IsValidLowLevel())
+			{
+				ModActor->mOnGravityResetTimeNotification.Broadcast(Time);
+			}
+		}
+	}
+	else
+	{
+		SI_ERROR("Player was NULL, config is probably incorrect");
+	}
+}
+
+static FLinearColor UpdateColor(const TArray<TSharedPtr<FJsonValue>> Data, FLinearColor Color)
+{
+	const auto Index = FMath::RandRange(0, Data.Num() - 1);
+	const TSharedPtr<FJsonObject> ColorData = Data[Index]->AsObject();
+	const auto R = ColorData->GetIntegerField("red");
+	const auto G = ColorData->GetIntegerField("green");
+	const auto B = ColorData->GetIntegerField("blue");
+	
+	return *new FLinearColor(R >= 0 ? R: Color.R, G >= 0 ? G : Color.G, B >= 0 ? B : Color.B);
+}
+
+void AActionHandler::HandleColorChange(TSharedPtr<FJsonObject> JsonObject) const
+{
+	const auto Player = GetTarget(JsonObject);
+	if (IsValid(Player))
+	{
+		auto BuildableSubsystem = AFGBuildableSubsystem::Get(Player);
+		if (IsValid(BuildableSubsystem))
+		{
+			const auto Slot = FMath::Max(FMath::Min(JsonObject->GetIntegerField("slot"), BuildableSubsystem->GetNbColorSlotsExposedToPlayers() - 1), 0);
+			const auto PrimaryColors = JsonObject->GetArrayField("primary_colors");
+			const auto SecondaryColors = JsonObject->GetArrayField("secondary_colors");
+
+			const auto PrimaryColor = BuildableSubsystem->GetColorSlotPrimary_Linear(Slot);
+			if (PrimaryColors.Num() > 0)
+				BuildableSubsystem->SetColorSlotPrimary_Linear(Slot, UpdateColor(PrimaryColors, PrimaryColor));
+
+			const auto SecondaryColor = BuildableSubsystem->GetColorSlotSecondary_Linear(Slot);
+			if (SecondaryColors.Num() > 0)
+				BuildableSubsystem->SetColorSlotSecondary_Linear(Slot, UpdateColor(SecondaryColors, SecondaryColor));
 		}
 	}
 	else
