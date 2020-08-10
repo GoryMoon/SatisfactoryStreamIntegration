@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Globalization;
 using Newtonsoft.Json;
 
 namespace SatisfactoryActions
@@ -32,25 +33,25 @@ namespace SatisfactoryActions
 
         private static void ProcessColor(Color color, Dictionary<string, object> parameters)
         {
-            color.Red = StringToInt(color.Red, -2, parameters).ToString();
-            color.Green = StringToInt(color.Green, -2, parameters).ToString();
-            color.Blue = StringToInt(color.Blue, -2, parameters).ToString();
+            color.Red = StringToFloat(color.Red, -3, parameters).ToString(CultureInfo.InvariantCulture);
+            color.Green = StringToFloat(color.Green, -3, parameters).ToString(CultureInfo.InvariantCulture);
+            color.Blue = StringToFloat(color.Blue, -3, parameters).ToString(CultureInfo.InvariantCulture);
         }
         
         [Serializable]
         public class Color
         {
-            [DefaultValue("-2")]
+            [DefaultValue("-3")]
             [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "red")]
-            public string Red = "-2";
+            public string Red = "-3";
         
-            [DefaultValue("-2")]
+            [DefaultValue("-3")]
             [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "green")]
-            public string Green = "-2";
+            public string Green = "-3";
         
-            [DefaultValue("-2")]
+            [DefaultValue("-3")]
             [JsonProperty(DefaultValueHandling = DefaultValueHandling.Populate, PropertyName = "blue")]
-            public string Blue = "-2";
+            public string Blue = "-3";
         }
     }
 }

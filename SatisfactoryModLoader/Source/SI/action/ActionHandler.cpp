@@ -454,14 +454,19 @@ static FLinearColor UpdateColor(const TArray<TSharedPtr<FJsonValue>> Data, FLine
 {
 	const auto Index = FMath::RandRange(0, Data.Num() - 1);
 	const TSharedPtr<FJsonObject> ColorData = Data[Index]->AsObject();
-	const auto R = ColorData->GetIntegerField("red");
-	const auto G = ColorData->GetIntegerField("green");
-	const auto B = ColorData->GetIntegerField("blue");
+	const float R = ColorData->GetNumberField("red");
+	const float G = ColorData->GetNumberField("green");
+	const float B = ColorData->GetNumberField("blue");
+
+	if (R == -3 || G == -3 || B == -3)
+	{
+		return FLinearColor::MakeRandomColor();
+	}
 	
 	return *new FLinearColor(
-		R == -1 ? Color.R: R == -2 ? FMath::RandHelper(255): R,
-		G == -1 ? Color.G: G == -2 ? FMath::RandHelper(255): G,
-		B == -1 ? Color.B: B == -2 ? FMath::RandHelper(255): B
+		R == -1 ? Color.R: R <= -2 ? FMath::FRand(): FMath::Max(R, 1.0f),
+		G == -1 ? Color.G: G <= -2 ? FMath::FRand(): FMath::Max(G, 1.0f),
+		B == -1 ? Color.B: B <= -2 ? FMath::FRand(): FMath::Max(B, 1.0f)
 	);
 }
 
